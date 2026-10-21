@@ -1,2 +1,2 @@
 # Masterarbeit
-Material der Masterarbeit
+Software der Masterarbeit
