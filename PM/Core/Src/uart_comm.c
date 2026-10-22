@@ -141,6 +141,7 @@ static void PrintStatus(void)
     uint8_t f;
 
     Put("OK run=");     PutUInt(PidControl_IsRunning());
+    Put(" manual=");    PutUInt(PidControl_IsManual());
     Put(" err=");       PutUInt((uint32_t)PidControl_GetErrorCode());
     Put(" cool=");      PutUInt(PidControl_GetDirection() == PID_DIRECTION_COOLING);
     Put(" valid=");     PutUInt(TempSensor_IsReady());
@@ -288,6 +289,17 @@ static void ProcessLine(char *cmd)
         Put("OK\r\n");
         return;
     }
+    if (strcmp(cmd, "duty") == 0)
+    {
+        if (hasValue && !PidControl_SetManualDuty(v))
+        {
+            Put("ERR running/error\r\n");
+            return;
+        }
+        Put("OK duty="); PutField(F_DUTY); Put(" i="); PutField(F_I);
+        Put(PidControl_IsManual() ? " (manual)\r\n" : "\r\n");
+        return;
+    }
     if (strcmp(cmd, "log") == 0)
     {
         if (hasValue)
@@ -308,7 +320,7 @@ static void ProcessLine(char *cmd)
     }
     if (f == F_COUNT)
     {
-        Put("ERR ? (s start stop clear recal log tset ilim kp ki kd addr)\r\n");
+        Put("ERR ? (s start stop clear recal log tset ilim kp ki kd addr duty)\r\n");
         return;
     }
     if (hasValue)

@@ -29,7 +29,12 @@ extern TIM_HandleTypeDef htim3; /* PWM_CTRL / TIM3_CH1, initialised by MX_TIM3_I
 #define OPEN_LOAD_MIN_CURRENT_A         0.1f  /* startup: less than this at DUTY_CYCLE_START = no Peltier element connected / open circuit */
 #define I_SAT_P                         2.5f  /* integrator anti-windup, positive */
 #define I_SAT_N                        -2.5f  /* integrator anti-windup, negative */
-#define DUTY_CYCLE_MAX                  1.0f  /* 100 % */
+/* Highest duty cycle ever applied. The high-side gate driver (TPS28225) is
+ * supplied from the bootstrap capacitor C25, which only recharges while the
+ * low side conducts: at 100 % it is never recharged, the gate voltage of the
+ * high-side MOSFET sags and the MOSFET heats up in its linear region. */
+#define DUTY_CYCLE_MAX                  0.95f
+#define PERCENT_PER_UNIT              100.0f
 #define DUTY_OVERLOAD_NONE              1.0f  /* dutyCycleOverload: no overload factor */
 
 /* Waiting times of the (blocking) startup check and of the stop sequence */
@@ -122,6 +127,9 @@ static uint8_t recalibrationCooldownCounter = 0;
 static uint8_t relayActuatedCooldownCounter = 0;
 static uint32_t driverLastTick = 0;
 
+/* ---- Manual duty-cycle mode (bring-up test, debug console "duty") ---------- */
+static uint8_t manualActive = 0;    /* fixed duty cycle without regulation, heating direction */
+
 /* ---- Small helpers --------------------------------------------------------- */
 static void BusyWaitMs(uint32_t ms)
 {
@@ -131,7 +139,7 @@ static void BusyWaitMs(uint32_t ms)
 
 static void SetPwmDutyCycle(float dc)
 {
-    if (dc <= dutyCycleLimit && dc >= 0.0f)
+    if (dc <= dutyCycleLimit && dc >= 0.0f && dc <= DUTY_CYCLE_MAX)   /* never above DUTY_CYCLE_MAX */
         htim3.Instance->CCR1 = (uint32_t)(dc * (float)(htim3.Instance->ARR + 1u) + 0.5f);
 }
 
@@ -260,9 +268,29 @@ static uint8_t RunStartupCalibration(void)
     return 1;
 }
 
+/* Manual mode: only supervision, the duty cycle is set by PidControl_SetManualDuty() */
+static void ManualStep(void)
+{
+    if ((HAL_GetTick() - driverLastTick) < CURRENT_CYCLE_MS)
+        return;
+    driverLastTick = HAL_GetTick();
+    if (measuredCurrent > (currentLimit + OVERCURRENT_MARGIN_A) || CurrentSensor_IsSaturated())
+    {
+        HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1);
+        manualActive = 0;
+        EnterDriverError(PID_ERROR_RUNTIME_OVERCURRENT);
+    }
+}
+
 static void DriverStep(void)
 {
     measuredCurrent = CurrentSensor_Read();
+
+    if (manualActive)
+    {
+        ManualStep();
+        return;
+    }
 
     switch (driverState)
     {
@@ -644,12 +672,63 @@ void PidControl_Process(void)
 
 void PidControl_Start(void)
 {
-    if (pidState == PID_STATE_OFF)
+    if (pidState == PID_STATE_OFF && !manualActive)
         startRequested = 1;
+}
+
+uint8_t PidControl_SetManualDuty(float percent)
+{
+    /* only while the regulation is off and no error is latched */
+    if (pidState != PID_STATE_OFF || driverState != DRIVER_STATE_OFF || startRequested)
+        return 0u;
+
+    if (percent <= 0.0f)
+    {
+        if (manualActive)
+        {
+            dutyCycle = 0.0f;
+            SetPwmDutyCycle(0.0f);
+            HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1);
+            HAL_GPIO_WritePin(FAN_CTRL_GPIO_Port, FAN_CTRL_Pin, GPIO_PIN_RESET);
+            manualActive = 0;
+        }
+        return 1u;
+    }
+
+    if (!manualActive)
+    {
+        /* same preparation as the startup check: heating direction, PWM at 0 % */
+        driverDirection = PID_DIRECTION_HEATING;
+        SetRelayHeating();
+        BusyWaitMs(RELAY_ACTUATION_MS);
+        ReleaseRelayCoils();
+        HAL_GPIO_WritePin(PID_HEATING_GPIO_Port, PID_HEATING_Pin, GPIO_PIN_RESET);
+        dutyCycleLimit = DUTY_CYCLE_MAX;
+        dutyCycle = 0.0f;
+        SetPwmDutyCycle(0.0f);
+        HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
+        CurrentSensor_CalibrateZero();             /* PWM at 0 %: zero-current baseline */
+        HAL_GPIO_WritePin(FAN_CTRL_GPIO_Port, FAN_CTRL_Pin, GPIO_PIN_SET);
+        driverLastTick = HAL_GetTick();
+        manualActive = 1;
+    }
+
+    dutyCycle = percent / PERCENT_PER_UNIT;
+    if (dutyCycle > DUTY_CYCLE_MAX)
+        dutyCycle = DUTY_CYCLE_MAX;
+    SetPwmDutyCycle(dutyCycle);
+    return 1u;
+}
+
+uint8_t PidControl_IsManual(void)
+{
+    return manualActive;
 }
 
 void PidControl_Stop(void)
 {
+    if (manualActive)
+        (void)PidControl_SetManualDuty(0.0f);       /* also ends the manual test */
     stopRequested = 1;
 }
 

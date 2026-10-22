@@ -54,7 +54,7 @@ typedef enum
 #define PID_TSET_MIN_DEGC     0.0f   /* inside the measuring range of the PT1000 front-end (~-5..54 degC) */
 #define PID_TSET_MAX_DEGC    50.0f
 #define PID_I_LIMIT_MIN_A     0.5f
-#define PID_I_LIMIT_MAX_A     5.0f   /* current measuring range is ~6.6 A (1 mOhm x 500), leaves room for the +0.5 A trip margin */
+#define PID_I_LIMIT_MAX_A     5.0f   /* current measuring range is ~8.25 A (2 mOhm x 200), leaves room for the +0.5 A trip margin */
 
 typedef enum
 {
@@ -79,6 +79,14 @@ void PidControl_Process(void);
 void PidControl_Start(void);
 void PidControl_Stop(void);
 uint8_t PidControl_IsRunning(void);
+
+/* Bring-up test (debug console "duty"): fixed duty cycle in percent without
+ * regulation, heating direction, max. 95 %. 0 switches the PWM off again.
+ * Only accepted while the regulation is off and no error is latched; the
+ * current is still supervised (above I_LIMIT + 0.5 A or ADC at full scale ->
+ * PWM off, error 2). Returns 1 if accepted. Start is ignored while active. */
+uint8_t PidControl_SetManualDuty(float percent);
+uint8_t PidControl_IsManual(void);
 
 /* Clears a latched error and returns to the idle (off) state - the I2C
  * equivalent of the original board's ERR_CONFIRM button, which does not

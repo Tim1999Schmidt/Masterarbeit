@@ -26,6 +26,9 @@
  *   ilim [A]            set / show current limit (0.5..5, only while stopped)
  *   kp | ki | kd [val]  set / show PID gain (0..65.535, same range as over I2C)
  *   log [ms]            periodic CSV line every ms (>= 100), 0 = off
+ *   duty [percent]      bring-up test: fixed duty cycle without regulation
+ *                       (heating, max. 95 %, current still supervised),
+ *                       "duty 0" switches it off; only while stopped
  *   addr [0x08..0x77]   set / show the I2C slave address (decimal or 0x hex),
  *                       stored in flash, effective immediately (default 0x28)
  *   (anything else)     ERR + list of commands

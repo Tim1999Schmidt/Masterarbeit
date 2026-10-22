@@ -10,8 +10,8 @@
 /* ---- Tunables, carried over from the original driver ------------------- */
 #define ADC_FULL_SCALE       4096.0f  /* 12-bit ADC1 */
 #define VDDA_MV               3300.0f  /* nominal supply, same constant as original driver (V_DDA_INITIAL) */
-#define SHUNT_OHM              0.001f  /* PM board: 1 mOhm shunt */
-#define INA_GAIN              500.0f  /* PM board: current-sense amplifier gain 500 -> 0.5 V/A, ~6.6 A full scale */
+#define SHUNT_OHM              0.002f  /* PM board: R1 = 2 mOhm shunt (PM_V2.1 schematic: changed from 1 mOhm) */
+#define INA_GAIN              200.0f  /* PM board: INA186A4, gain 200 V/V -> 2 mOhm x 200 = 0.4 V/A, ~8.25 A full scale */
 #define OVERSAMPLE_COUNT           8u   /* same oversampling factor as the original driver's readADC() */
 #define SATURATION_COUNTS     4090.0f  /* filtered reading at/above this = amplifier/ADC at the top rail */
 #define MV_PER_V              1000.0f
