@@ -24,7 +24,7 @@
 #define PM_REG_KP            0x10u   /* RW uint16 x1000 */
 #define PM_REG_KI            0x12u   /* RW uint16 x1000 */
 #define PM_REG_KD            0x14u   /* RW uint16 x1000 */
-#define PM_REG_I_LIMIT       0x16u   /* RW uint16 mA (500..5000, only while stopped) */
+#define PM_REG_I_LIMIT       0x16u   /* RW uint16 mA (500..3000, only while stopped) */
 #define PM_REG_I_ACTUAL      0x18u   /* RO uint16 mA */
 #define PM_REG_DUTY_CYCLE    0x1Au   /* RO uint16 x1000 */
 #define PM_REG_MAP_SIZE      0x1Cu
@@ -63,6 +63,6 @@
 #define PM_T_SET_MIN_CENTI   0
 #define PM_T_SET_MAX_CENTI   5000
 #define PM_I_LIMIT_MIN_MA    500u
-#define PM_I_LIMIT_MAX_MA    5000u
+#define PM_I_LIMIT_MAX_MA    3000u   /* permissible for the Peltier element even at 24 V (PM measuring range ~8.25 A) */
 
 #endif /* PM_REGS_H */

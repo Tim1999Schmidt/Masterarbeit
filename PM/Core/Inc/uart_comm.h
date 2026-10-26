@@ -9,7 +9,7 @@
  * TEMP_SOURCE (the controller always uses whatever source is selected via I2C,
  * by default the onboard PT1000). Both interfaces act on the same modules, so a
  * value set over UART is also what the master reads over I2C, and vice versa.
- * The same rules apply: T_SET 0..50 degC, I_LIMIT 0.5..5 A and only while
+ * The same rules apply: T_SET 0..50 degC, I_LIMIT 0.5..3.0 A and only while
  * stopped, recalibration only while stopped.
  *
  * Terminal settings: 115200 baud, 8N1, no flow control (USART1 in PM.ioc).
@@ -18,17 +18,23 @@
  * '.' or ',' as decimal separator.
  *
  *   s                   status: run, err (code, see i2c_comm.h), cool, valid,
+ *                       addr, igain,
  *                       cal (CAL_LOW/CAL_HIGH) + all values (tset ... kd)
  *   start / stop        start / stop regulating
  *   clear               clear a latched error
  *   recal               recalibrate the temperature front-end (only while stopped)
  *   tset [degC]         set / show setpoint (0..50)
- *   ilim [A]            set / show current limit (0.5..5, only while stopped)
+ *   ilim [A]            set / show current limit (0.5..3.0, default 3.0, only while stopped)
  *   kp | ki | kd [val]  set / show PID gain (0..65.535, same range as over I2C)
  *   log [ms]            periodic CSV line every ms (>= 100), 0 = off
  *   duty [percent]      bring-up test: fixed duty cycle without regulation
- *                       (heating, max. 95 %, current still supervised),
- *                       "duty 0" switches it off; only while stopped
+ *                       (max. 95 %, current still supervised);
+ *                       positive = heating, negative = cooling (e.g.
+ *                       "duty -30"), "duty 0" switches it off; only while
+ *                       stopped
+ *   igain [factor]      set / show the calibration factor of the current
+ *                       measurement (0.8..1.2, stored in flash): factor =
+ *                       true current / displayed current x old factor
  *   addr [0x08..0x77]   set / show the I2C slave address (decimal or 0x hex),
  *                       stored in flash, effective immediately (default 0x28)
  *   (anything else)     ERR + list of commands

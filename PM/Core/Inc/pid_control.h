@@ -54,7 +54,8 @@ typedef enum
 #define PID_TSET_MIN_DEGC     0.0f   /* inside the measuring range of the PT1000 front-end (~-5..54 degC) */
 #define PID_TSET_MAX_DEGC    50.0f
 #define PID_I_LIMIT_MIN_A     0.5f
-#define PID_I_LIMIT_MAX_A     5.0f   /* current measuring range is ~8.25 A (2 mOhm x 200), leaves room for the +0.5 A trip margin */
+#define PID_I_LIMIT_MAX_A     3.0f   /* permissible for the Peltier element even at the full 24 V output;
+                                      * measuring range ~8.25 A (2 mOhm x 200), limit + 0.5 A trip margin stays well below it */
 
 typedef enum
 {
@@ -63,6 +64,11 @@ typedef enum
 } PidControl_Direction_t;
 
 /* One-time setup. Call once from main() before the main loop. */
+/* Starts TIM3 with an inverted output at 0 % (PA6 permanently high = output
+ * stage off, see pid_control.c). Call in USER CODE "TIM3_Init 2" of main.c,
+ * i.e. before HAL_TIM_MspPostInit() switches PA6 to the timer. */
+void PidControl_PwmOutputInit(void);
+
 void PidControl_Init(void);
 
 /* Cooperative, non-blocking step (aside from the one-time startup
@@ -81,7 +87,9 @@ void PidControl_Stop(void);
 uint8_t PidControl_IsRunning(void);
 
 /* Bring-up test (debug console "duty"): fixed duty cycle in percent without
- * regulation, heating direction, max. 95 %. 0 switches the PWM off again.
+ * regulation, max. 95 %. The sign selects the direction: positive = heating,
+ * negative = cooling (a direction change switches the PWM off and flips the
+ * relay first). 0 switches the PWM off again.
  * Only accepted while the regulation is off and no error is latched; the
  * current is still supervised (above I_LIMIT + 0.5 A or ADC at full scale ->
  * PWM off, error 2). Returns 1 if accepted. Start is ignored while active. */

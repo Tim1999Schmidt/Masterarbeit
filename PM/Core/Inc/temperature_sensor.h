@@ -27,9 +27,9 @@
  *      SEL4       : unused on this board revision (kept low)
  *
  * Measurement: one reading every TEMP_SAMPLE_INTERVAL_MS (100 ms, fixed).
- * Unlike the original RC-charging method there is nothing to wait for - no
- * settling time, no filter time, no temporal filter. A reading is a short burst
- * of ADC conversions on the already-selected CH1, averaged against ADC noise.
+ * A reading is a short burst of ADC conversions on the already-selected CH1,
+ * averaged against ADC noise, then averaged over the last 1 s
+ * (TEMP_AVG_SAMPLES) against measurement noise.
  *
  * Calibration: the two precision resistors sit near the two ends of the
  * measuring range (both inside it, not at the ADC rails), so measuring them
@@ -42,9 +42,10 @@
  * table in 10 K steps (values from the PT1000 sensor data sheet, see
  * temperature_sensor.c). The calibration runs on the
  * same fixed 100 ms clock, right after TempSensor_Init() and on request
- * (TempSensor_Recalibrate(); the PID controller requests one whenever a new
- * setpoint is set and once when the setpoint is reached, to remove drift of
- * the front-end):
+ * (TempSensor_Recalibrate(); the PID controller requests one whenever the
+ * setpoint changes and once when the temperature first reaches the setpoint,
+ * to remove drift of the front-end). Load current falsifies the calibration
+ * readings, so the output stage is off while TempSensor_IsCalibrating():
  *
  *      tick 0: connect the 1.00 kOhm reference (done in Init / on request)
  *      tick 1: measure it,            connect the 1.20 kOhm reference
@@ -104,6 +105,17 @@ void TempSensor_Process(void);
  * new setpoint / on reaching it); the temperature step the new calibration causes
  * is reported through TempSensor_ConsumeCalibrationShift(). */
 void TempSensor_Recalibrate(void);
+
+/* 1 from the recalibration request until the calibration is finished
+ * (~300-400 ms). The output stage must be off meanwhile: load current
+ * falsifies the calibration readings. pid_control.c pauses the PWM while this
+ * returns 1 (regulation and manual mode). */
+uint8_t TempSensor_IsCalibrating(void);
+
+/* To be called whenever the Peltier relay K1 is pulsed (pid_control.c): the
+ * coil pulse loads +5VA, which also supplies the front-end, so no ADC reading
+ * is taken for TEMP_RELAY_HOLDOFF_MS. */
+void TempSensor_RelaySwitched(void);
 
 /* Returns (once) by how many degC the recalibration(s) since the last call moved
  * the PT1000 temperature - evaluated on the same raw reading with the old and the

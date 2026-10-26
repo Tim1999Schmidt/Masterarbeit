@@ -36,6 +36,7 @@
 #define DEC_BASE             10u
 #define HEX_LETTER_OFFSET    10u      /* 'a' = 10 */
 #define ADDR_CMD             "addr"
+#define I_GAIN_DECIMALS       4u      /* igain shown as 1.0000 */
 #define ADDR_CMD_LEN         4u
 
 static volatile uint8_t  rxBuf[RX_BUF_SIZE];
@@ -146,6 +147,7 @@ static void PrintStatus(void)
     Put(" cool=");      PutUInt(PidControl_GetDirection() == PID_DIRECTION_COOLING);
     Put(" valid=");     PutUInt(TempSensor_IsReady());
     Put(" addr=0x");    PutHex2(PmSettings_Get()->i2cAddr);
+    Put(" igain=");     PutFixed((float)PmSettings_Get()->iGainScale / (float)PM_I_GAIN_SCALE_ONE, I_GAIN_DECIMALS);
     Put(" cal=");       PutUInt(TempSensor_GetCalCountsLow());
     PutChar('/');       PutUInt(TempSensor_GetCalCountsHigh());
     Put("\r\n");
@@ -289,6 +291,28 @@ static void ProcessLine(char *cmd)
         Put("OK\r\n");
         return;
     }
+    if (strcmp(cmd, "igain") == 0)
+    {
+        if (hasValue)
+        {
+            const float scale = v * (float)PM_I_GAIN_SCALE_ONE + 0.5f;
+            if (scale < (float)PM_I_GAIN_SCALE_MIN || scale > (float)PM_I_GAIN_SCALE_MAX + 0.5f)
+            {
+                Put("ERR 0.8..1.2\r\n");
+                return;
+            }
+            PmSettings_Get()->iGainScale = (uint16_t)scale;
+            if (!PmSettings_Save())
+            {
+                Put("ERR flash\r\n");
+                return;
+            }
+        }
+        Put("OK igain=");
+        PutFixed((float)PmSettings_Get()->iGainScale / (float)PM_I_GAIN_SCALE_ONE, I_GAIN_DECIMALS);
+        Put("\r\n");
+        return;
+    }
     if (strcmp(cmd, "duty") == 0)
     {
         if (hasValue && !PidControl_SetManualDuty(v))
@@ -297,6 +321,7 @@ static void ProcessLine(char *cmd)
             return;
         }
         Put("OK duty="); PutField(F_DUTY); Put(" i="); PutField(F_I);
+        Put(" cool="); PutUInt(PidControl_GetDirection() == PID_DIRECTION_COOLING);
         Put(PidControl_IsManual() ? " (manual)\r\n" : "\r\n");
         return;
     }
@@ -320,7 +345,7 @@ static void ProcessLine(char *cmd)
     }
     if (f == F_COUNT)
     {
-        Put("ERR ? (s start stop clear recal log tset ilim kp ki kd addr duty)\r\n");
+        Put("ERR ? (s start stop clear recal log tset ilim kp ki kd addr duty igain)\r\n");
         return;
     }
     if (hasValue)
@@ -331,7 +356,7 @@ static void ProcessLine(char *cmd)
         }
         else if (f == F_ILIM)
         {
-            if (!PidControl_SetCurrentLimit(v))            /* clamped to 0.5..5 A */
+            if (!PidControl_SetCurrentLimit(v))            /* clamped to 0.5..3.0 A */
             {
                 Put("ERR running\r\n");
                 return;

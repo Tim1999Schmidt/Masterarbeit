@@ -422,6 +422,7 @@ static void MX_TIM3_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN TIM3_Init 2 */
+  PidControl_PwmOutputInit();   /* inverted PWM output, running at 0 % = output stage off */
 
   /* USER CODE END TIM3_Init 2 */
   HAL_TIM_MspPostInit(&htim3);

@@ -55,7 +55,7 @@
  *   0x10  KP           RW  uint16  x1000
  *   0x12  KI           RW  uint16  x1000
  *   0x14  KD           RW  uint16  x1000
- *   0x16  I_LIMIT      RW  uint16  mA, clamped to 500..5000; only accepted while not running
+ *   0x16  I_LIMIT      RW  uint16  mA, clamped to 500..3000 (default 3000); only accepted while not running
  *                                  (reads back the value in effect)
  *   0x18  I_ACTUAL     RO  uint16  mA (always >= 0, see current_sensor.h)
  *   0x1A  DUTY_CYCLE   RO  uint16  x1000 (0..1000 = 0..100.0%)

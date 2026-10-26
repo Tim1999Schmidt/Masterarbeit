@@ -42,8 +42,12 @@ float CurrentSensor_Read(void);
  * output is confirmed at 0% duty cycle / the driver is off, so that any
  * small residual offset of the current-sense amplifier is calibrated out
  * rather than guessed at. Safe to call again later (e.g. periodically while
- * the driver is off) to track thermal drift of that offset. */
-void CurrentSensor_CalibrateZero(void);
+ * the driver is off) to track thermal drift of that offset.
+ * A baseline above ~25 mA is rejected (the previous one is kept): at duty
+ * cycle 0 the low-side MOSFET short-circuits the Peltier element and its
+ * Seebeck voltage can still drive current through the shunt.
+ * Returns 1 if the new baseline was accepted. */
+uint8_t CurrentSensor_CalibrateZero(void);
 
 /* 1 if the most recent CurrentSensor_Read() was at the top of the ADC range:
  * the real current is then above the measuring range (~8.25 A) and unknown.

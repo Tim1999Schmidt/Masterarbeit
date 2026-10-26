@@ -37,7 +37,7 @@
  * ---- PM (temperature control) --------------------------------------------
  *   PMSET;<pm>;<tset_cdegC>       setpoint 0..5000 (0..50 degC)
  *   PMSTART;<pm>   PMSTOP;<pm>   PMCLR;<pm>   PMRECAL;<pm>
- *   PMILIM;<pm>;<mA>              current limit 500..5000 (only while stopped)
+ *   PMILIM;<pm>;<mA>              current limit 500..3000 (only while stopped)
  *   PMGAIN;<pm>;<kp>;<ki>;<kd>    gains x1000
  *   (<pm> = 0 means all PMs)
  * ---- BM -------------------------------------------------------------------

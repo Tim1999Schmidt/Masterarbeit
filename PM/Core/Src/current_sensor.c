@@ -6,6 +6,7 @@
  */
 #include "current_sensor.h"
 #include "adc_reader.h"
+#include "pm_settings.h"
 
 /* ---- Tunables, carried over from the original driver ------------------- */
 #define ADC_FULL_SCALE       4096.0f  /* 12-bit ADC1 */
@@ -15,6 +16,14 @@
 #define OVERSAMPLE_COUNT           8u   /* same oversampling factor as the original driver's readADC() */
 #define SATURATION_COUNTS     4090.0f  /* filtered reading at/above this = amplifier/ADC at the top rail */
 #define MV_PER_V              1000.0f
+/* Plausibility limit of the zero-current baseline. With REFIN at ground the
+ * INA186 output at 0 A is only its offset (a few mV, ~10 mA at 0.4 V/A). A larger
+ * reading at duty cycle 0 means current is flowing: the low-side MOSFET is
+ * on and short-circuits the Peltier element, whose Seebeck voltage (left-over
+ * temperature difference) then drives current through the shunt. Such a
+ * baseline is rejected and the previous one is kept. */
+#define ZERO_MAX_A              0.025f
+#define A_PER_COUNT  (VDDA_MV / (ADC_FULL_SCALE * MV_PER_V * SHUNT_OHM * INA_GAIN))
 
 static uint32_t zeroCounts = 0;
 static float lastCounts = 0.0f;
@@ -54,12 +63,19 @@ static float ReadFilteredCounts(void)
 void CurrentSensor_Init(void)
 {
     zeroCounts = 0;
+    PmSettings_Load();            /* calibration factor iGainScale */
 }
 
-void CurrentSensor_CalibrateZero(void)
+uint8_t CurrentSensor_CalibrateZero(void)
 {
     /* Call only while confirmed at 0 A (PWM duty cycle 0 / driver off) - see header. */
-    zeroCounts = (uint32_t)ReadFilteredCounts();
+    float counts = ReadFilteredCounts();
+    if (counts * A_PER_COUNT <= ZERO_MAX_A)
+    {
+        zeroCounts = (uint32_t)counts;
+        return 1u;
+    }
+    return 0u;
 }
 
 float CurrentSensor_Read(void)
@@ -68,7 +84,8 @@ float CurrentSensor_Read(void)
     float current;
 
     lastCounts = counts;
-    current = (counts - (float)zeroCounts) * VDDA_MV / (ADC_FULL_SCALE * MV_PER_V * SHUNT_OHM * INA_GAIN);
+    current = (counts - (float)zeroCounts) * A_PER_COUNT;
+    current *= (float)PmSettings_Get()->iGainScale / (float)PM_I_GAIN_SCALE_ONE;   /* calibration ("igain") */
 
     /* The sense tap sits after the direction relay: only one polarity is
      * physically possible here (see current_sensor.h). Clamp away any small

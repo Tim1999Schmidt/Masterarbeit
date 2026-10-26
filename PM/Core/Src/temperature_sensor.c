@@ -32,6 +32,14 @@
 
 /* ---- Tunables ----------------------------------------------------------- */
 #define TEMP_SAMPLE_INTERVAL_MS   100u     /* fixed measurement interval (same as the PID cycle) */
+/* Moving average of the PT1000 readings (one per TEMP_SAMPLE_INTERVAL_MS):
+ * 10 readings = 1 s. Averages the measurement noise; the delay (~0.5 s) is
+ * small against the ~15-20 s lag of the thermal path. The averaged value is
+ * kept in ADC counts, so a new calibration applies to it at once. */
+#define TEMP_AVG_SAMPLES             10u
+
+#define TEMP_RELAY_HOLDOFF_MS     150u     /* no ADC reading this long after a relay pulse: the coil pulse
+                                            * (50 ms) loads +5VA, which also supplies the front-end */
 #define TEMP_OVERSAMPLE            16u     /* ADC conversions averaged per reading (one short burst) */
 #define CAL_OVERSAMPLE             64u     /* ADC conversions averaged per calibration resistor      */
 #define CAL_MIN_SPAN_COUNTS      1000.0f   /* plausibility: counts(1.2k) - counts(1k) must be at least this (nominal ~3530) */
@@ -139,6 +147,15 @@ static uint8_t pt1000Fault      = 0u;
 static float calCountsLow  = 0.0f;
 static float calCountsHigh = 0.0f;
 
+/* Moving average of the PT1000 counts */
+static float   ptCountsHistory[TEMP_AVG_SAMPLES];
+static uint8_t ptHistoryIndex = 0u;
+static uint8_t ptHistoryCount = 0u;   /* valid entries (0 after reset) */
+
+/* Relay switch hold-off (see TempSensor_RelaySwitched()). */
+static uint8_t  relayHoldoff      = 0u;
+static uint32_t relayHoldoffStart = 0u;
+
 /* Active counts -> resistance mapping: two known points on a straight line. */
 static float mapCountsLow   = 0.0f;   /* set to the nominal front-end in TempSensor_Init() */
 static float mapResLow      = R_CAL_LOW_OHM;
@@ -237,16 +254,30 @@ static void FinishCalibration(void)
 /* One PT1000 reading: counts -> resistance -> temperature (+ trim). */
 static void MeasurePt1000(void)
 {
-    const float counts = ReadAveragedCounts(TEMP_OVERSAMPLE);
+    float sum = 0.0f;
+    uint8_t i;
+    const float raw = ReadAveragedCounts(TEMP_OVERSAMPLE);
 
-    lastPtCounts    = counts;
-    resistanceOhm   = CountsToResistance(counts);
+    if (ptHistoryCount == 0u)
+    {
+        /* first reading: fill the whole window, no ramp from 0 */
+        for (i = 0u; i < TEMP_AVG_SAMPLES; i++)
+            ptCountsHistory[i] = raw;
+        ptHistoryCount = TEMP_AVG_SAMPLES;
+    }
+    ptCountsHistory[ptHistoryIndex] = raw;
+    ptHistoryIndex = (uint8_t)((ptHistoryIndex + 1u) % TEMP_AVG_SAMPLES);
+    for (i = 0u; i < TEMP_AVG_SAMPLES; i++)
+        sum += ptCountsHistory[i];
+
+    lastPtCounts    = sum / (float)TEMP_AVG_SAMPLES;
+    resistanceOhm   = CountsToResistance(lastPtCounts);
     temperatureC    = ResistanceToTrimmedTemperature(resistanceOhm, &temperatureRawC);
     measurementValid = 1u;
     newSample        = 1u;
 
     /* Plausibility check on the raw counts (see file header) */
-    if ((counts < TEMP_FAULT_LOW_COUNTS) || (counts > TEMP_FAULT_HIGH_COUNTS))
+    if ((raw < TEMP_FAULT_LOW_COUNTS) || (raw > TEMP_FAULT_HIGH_COUNTS))
     {
         if (pt1000FaultCount < TEMP_FAULT_DEBOUNCE)
             pt1000FaultCount++;
@@ -280,6 +311,12 @@ void TempSensor_Process(void)
 {
     const uint32_t now = HAL_GetTick();
 
+    if (relayHoldoff)
+    {
+        if ((now - relayHoldoffStart) < TEMP_RELAY_HOLDOFF_MS)
+            return;
+        relayHoldoff = 0u;
+    }
     if ((now - lastTick) < TEMP_SAMPLE_INTERVAL_MS)
         return;
     lastTick = now;
@@ -320,6 +357,17 @@ void TempSensor_Process(void)
 void TempSensor_Recalibrate(void)
 {
     recalRequested = 1u;
+}
+
+uint8_t TempSensor_IsCalibrating(void)
+{
+    return (recalRequested || state != TS_RUN) ? 1u : 0u;
+}
+
+void TempSensor_RelaySwitched(void)
+{
+    relayHoldoff      = 1u;
+    relayHoldoffStart = HAL_GetTick();
 }
 
 uint8_t TempSensor_IsReady(void)
