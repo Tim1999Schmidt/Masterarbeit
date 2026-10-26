@@ -39,7 +39,7 @@ function MM_GUI()
     DEFAULT_STOP_INDEX   = NUM_FREQ - 1;
     DEFAULT_AMPLITUDE    = 2;          % 100 mA (Listeneintrag)
     DEFAULT_TSET_DEGC    = 25;
-    DEFAULT_ILIM_A       = 2;
+    DEFAULT_ILIM_A       = 3;          % = Standard und Maximum des PM
     PROGRESS_IDLE        = 255;
     FIRST_CELL_LETTER    = 'A';        % Standard-Zellnamen Zelle_A, Zelle_B, ...
 
