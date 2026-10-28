@@ -69,6 +69,12 @@ typedef enum
  * i.e. before HAL_TIM_MspPostInit() switches PA6 to the timer. */
 void PidControl_PwmOutputInit(void);
 
+/* Output stage off for a moment / back to the previous duty cycle (used by
+ * temperature_sensor.c around each PT1000 reading; blocking, nothing else
+ * runs in between). */
+void PidControl_OutputPause(void);
+void PidControl_OutputResume(void);
+
 void PidControl_Init(void);
 
 /* Cooperative, non-blocking step (aside from the one-time startup

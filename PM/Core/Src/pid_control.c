@@ -18,6 +18,9 @@ extern TIM_HandleTypeDef htim3; /* PWM_CTRL / TIM3_CH1, initialised by MX_TIM3_I
 #define CURRENT_CYCLE_MS               10u    /* actuation stage update rate */
 #define CURRENT_UPDATE_COOLDOWN_MS     20u    /* settle time after a new control value before overcurrent checks resume */
 #define FLIP_TIME_MS                 1000u    /* minimum time direction must be requested before the relay actually flips */
+#define DIRECTION_HYSTERESIS_A          0.1f  /* the relay is only flipped for a request of more than this in the
+                                               * other direction (near room temperature the holding current is
+                                               * ~0 A and the D noise would flip it back and forth) */
 
 /* PWM resolution is taken from the timer itself (ARR + 1 counts per period, set
  * by the TIM3 Counter Period in PM.ioc), so it stays correct if the PWM frequency
@@ -66,12 +69,27 @@ extern TIM_HandleTypeDef htim3; /* PWM_CTRL / TIM3_CH1, initialised by MX_TIM3_I
  * its value at the start (wrong polarity / runaway) */
 #define SANITY_ERR_GROWTH_K             3.0f
 
+/* Integral separation with stall escape. The integrator runs only
+ *   - while |error| <= PID_I_BAND_K, or
+ *   - once the temperature has (almost) stopped moving: change of less than
+ *     PID_STALL_RATE_K_PER_S over the last PID_STALL_WINDOW_S seconds.
+ * During a fast approach the integrator is frozen, so it cannot build up an
+ * overshoot. If P alone settles outside the band (kp * error = current needed
+ * to hold the temperature, e.g. ~2 K below 50 degC), the stall condition lets
+ * the integrator remove that rest. Measured plant: time constant ~450 s,
+ * ~18 K/A, ~15 s lag (simulated: < 0.1 K overshoot for 20->25, 25->50 and
+ * 25->10 degC with the default gains). */
+#define PID_I_BAND_K                    1.0f
+#define PID_STALL_WINDOW_S              30u
+#define PID_STALL_RATE_K_PER_S         (0.2f / 60.0f)   /* 0.2 K/min (15 s / 0.5 K/min was tried: more oscillation) */
+
 /* Defaults after reset (all changeable via I2C / console) */
 #define PID_TSET_DEFAULT_DEGC          25.0f
-#define PID_KP_DEFAULT                  0.5f
-#define PID_KI_DEFAULT                  0.003f /* integral time kp/ki ~170 s: the thermal path has ~15-20 s lag */
-#define PID_KD_DEFAULT                  0.0f   /* the PT1000 reading jumps +-0.1 K per sample: any D gain
-                                                * turns that noise into current jumps of several A */
+#define PID_KP_DEFAULT                  1.0f
+#define PID_KI_DEFAULT                  0.015f /* integral time kp/ki ~67 s; integrates only near the setpoint
+                                                * or once the approach has stalled, see PID_I_BAND_K */
+#define PID_KD_DEFAULT                  5.0f   /* brakes the approach (~15 s lag), allows the higher kp; with the
+                                                * 1 s averaged reading ~+-0.2 A current noise (tested 20/50 degC) */
 #define PID_I_LIMIT_DEFAULT_A           3.0f   /* = PID_I_LIMIT_MAX_A */
 
 /* Recalibration of the temperature front-end "when the setpoint is reached"
@@ -107,7 +125,12 @@ static float pidOut = 0.0f;
 static float err = 0.0f, errStart = 0.0f;
 static float errHistory[ERR_HISTORY_LEN];
 static uint8_t tempUpdatedFlag = 0;
-static uint8_t reachedRecalDone = 0;  /* the "setpoint reached" recalibration has been requested for this setpoint */
+static uint8_t reachedRecalDone = 0;
+/* temperature once per second over PID_STALL_WINDOW_S, for the stall check */
+static float   stallTempHistory[PID_STALL_WINDOW_S + 1u];
+static uint8_t stallIndex = 0;       /* next slot to write */
+static uint8_t stallCount = 0;       /* valid entries */
+static uint8_t stallSubsample = 0;   /* PID cycles since the last entry */  /* the "setpoint reached" recalibration has been requested for this setpoint */
 static PidControl_Error_t lastError = PID_ERROR_NONE;
 
 /* ---- Driver / actuation state --------------------------------------------- */
@@ -391,10 +414,11 @@ static void DriverStep(void)
         else
             ReleaseRelayCoils();
 
-        /* pidOut == 0 (e.g. right after start) keeps the current relay position */
-        if (pidOut > 0.0f)
+        /* |pidOut| <= DIRECTION_HYSTERESIS_A keeps the current relay position
+         * (the output is then clamped to 0 in the "wrong" direction below) */
+        if (pidOut > DIRECTION_HYSTERESIS_A)
             controlDirection = PID_DIRECTION_HEATING;
-        else if (pidOut < 0.0f)
+        else if (pidOut < -DIRECTION_HYSTERESIS_A)
             controlDirection = PID_DIRECTION_COOLING;
         else
             controlDirection = driverDirection;
@@ -519,6 +543,8 @@ static void PidStep(void)
                 errHistory[i] -= shift;   /* err = T_SET - T */
             err      -= shift;
             errStart -= shift;
+            for (i = 0; i < stallCount; i++)
+                stallTempHistory[i] += shift;   /* stays consistent: no false rate */
         }
     }
 
@@ -544,6 +570,9 @@ static void PidStep(void)
             pidOut = 0.0f;          /* no stale output from a previous run */
             P_val = I_val = D_val = 0.0f;
             reachedRecalDone = 0;
+            stallCount = 0;
+            stallIndex = 0;
+            stallSubsample = 0;
             driverStartRequested = 1;
             pidState = PID_STATE_WAIT_FOR_DRIVER;
         }
@@ -633,10 +662,29 @@ static void PidStep(void)
              * has been crossed. */
             const float iNew = I_val + ki * err / PID_FREQ_HZ;
             const float outNew = P_val + iNew + D_val;
-            /* (No band limit on the error: with P alone the controller stops
-             * where kp * error = current needed to hold the temperature, e.g.
-             * 3 K below 50 degC with kp 0.5 - the integrator must work there.) */
-            if (!((outNew > currentLimit && err > 0.0f) || (outNew < -currentLimit && err < 0.0f)))
+            const float errMag = (err < 0.0f) ? -err : err;
+            uint8_t stalled = 0;
+
+            /* temperature history, one entry per second */
+            if (++stallSubsample >= (uint8_t)PID_FREQ_HZ)
+            {
+                stallSubsample = 0;
+                stallTempHistory[stallIndex] = T_SET - err;
+                stallIndex = (uint8_t)((stallIndex + 1u) % (PID_STALL_WINDOW_S + 1u));
+                if (stallCount < PID_STALL_WINDOW_S + 1u)
+                    stallCount++;
+            }
+            if (stallCount == PID_STALL_WINDOW_S + 1u)
+            {
+                /* stallIndex now points at the oldest entry */
+                const uint8_t newest = (uint8_t)((stallIndex + PID_STALL_WINDOW_S) % (PID_STALL_WINDOW_S + 1u));
+                float change = stallTempHistory[newest] - stallTempHistory[stallIndex];
+                if (change < 0.0f) change = -change;
+                stalled = (change < PID_STALL_RATE_K_PER_S * (float)PID_STALL_WINDOW_S) ? 1u : 0u;
+            }
+            /* (Band limit with stall escape, see PID_I_BAND_K.) */
+            if ((errMag <= PID_I_BAND_K || stalled) &&
+                !((outNew > currentLimit && err > 0.0f) || (outNew < -currentLimit && err < 0.0f)))
                 I_val = iNew;
         }
         /* the integrator alone never asks for more than the current limit */
@@ -672,6 +720,19 @@ void PidControl_PwmOutputInit(void)
     htim3.Instance->CCR1 = 0u;                       /* 0 % */
     htim3.Instance->CCER |= TIM_CCER_CC1P;           /* inverted output, see PwmOff() */
     (void)HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);  /* PA6 now driven high = output stage off */
+}
+
+static uint32_t pausedCcr = 0u;   /* compare value saved by PidControl_OutputPause() */
+
+void PidControl_OutputPause(void)
+{
+    pausedCcr = htim3.Instance->CCR1;
+    htim3.Instance->CCR1 = 0u;                       /* output stage off, see PwmOff() */
+}
+
+void PidControl_OutputResume(void)
+{
+    htim3.Instance->CCR1 = pausedCcr;
 }
 
 void PidControl_Init(void)

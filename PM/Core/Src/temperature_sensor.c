@@ -13,6 +13,7 @@
  */
 #include "temperature_sensor.h"
 #include "adc_reader.h"
+#include "pid_control.h"
 #include <stddef.h>
 
 /* ---- Front-end description (PM board) ---------------------------------- */
@@ -37,6 +38,13 @@
  * small against the ~15-20 s lag of the thermal path. The averaged value is
  * kept in ADC counts, so a new calibration applies to it at once. */
 #define TEMP_AVG_SAMPLES             10u
+
+/* The switching PWM shifts the PT1000 reading (~0.2 K lower while the
+ * output stage switches than while it is off; seen as a jump each time the
+ * duty cycle reaches 0). Every PT1000 reading is therefore taken with the
+ * output stage briefly off: PWM pause, settle, ADC burst, PWM restored
+ * (~3 ms of every 100 ms). The calibration readings are load-free anyway. */
+#define TEMP_PWM_PAUSE_SETTLE_MS    2u     /* 1..2 ms (tick based) */
 
 #define TEMP_RELAY_HOLDOFF_MS     150u     /* no ADC reading this long after a relay pulse: the coil pulse
                                             * (50 ms) loads +5VA, which also supplies the front-end */
@@ -256,7 +264,14 @@ static void MeasurePt1000(void)
 {
     float sum = 0.0f;
     uint8_t i;
-    const float raw = ReadAveragedCounts(TEMP_OVERSAMPLE);
+    float raw;
+    uint32_t pauseStart;
+
+    PidControl_OutputPause();                    /* see TEMP_PWM_PAUSE_SETTLE_MS */
+    pauseStart = HAL_GetTick();
+    while ((HAL_GetTick() - pauseStart) < TEMP_PWM_PAUSE_SETTLE_MS) { }
+    raw = ReadAveragedCounts(TEMP_OVERSAMPLE);
+    PidControl_OutputResume();
 
     if (ptHistoryCount == 0u)
     {
