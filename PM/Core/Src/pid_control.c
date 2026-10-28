@@ -26,8 +26,6 @@ extern TIM_HandleTypeDef htim3; /* PWM_CTRL / TIM3_CH1, initialised by MX_TIM3_I
 #define DUTY_CYCLE_START                0.2f  /* initial test duty cycle for the startup short-circuit check */
 #define CURRENT_LIMIT_START_A           3.0f  /* fixed startup short-circuit threshold, independent of the user-settable run-time limit */
 #define OPEN_LOAD_MIN_CURRENT_A         0.1f  /* startup: less than this at DUTY_CYCLE_START = no Peltier element connected / open circuit */
-#define I_SAT_P                         2.5f  /* integrator anti-windup, positive */
-#define I_SAT_N                        -2.5f  /* integrator anti-windup, negative */
 /* Highest duty cycle ever applied. The high-side gate driver (TPS28225) is
  * supplied from the bootstrap capacitor C25, which only recharges while the
  * low side conducts: at 100 % it is never recharged, the gate voltage of the
@@ -63,10 +61,6 @@ extern TIM_HandleTypeDef htim3; /* PWM_CTRL / TIM3_CH1, initialised by MX_TIM3_I
  * hard protection. */
 #define DUTY_LIMIT_HEADROOM             1.25f
 
-/* Integral separation: the integrator only runs while |error| is within this
- * band. Far from the setpoint P alone drives the current (mostly at the
- * limit); integrating there only builds up an overshoot. */
-#define PID_I_BAND_K                    1.0f
 
 /* Sanity check: the temperature error may grow by at most this much beyond
  * its value at the start (wrong polarity / runaway) */
@@ -639,13 +633,15 @@ static void PidStep(void)
              * has been crossed. */
             const float iNew = I_val + ki * err / PID_FREQ_HZ;
             const float outNew = P_val + iNew + D_val;
-            const float errMag = (err < 0.0f) ? -err : err;
-            if (errMag <= PID_I_BAND_K &&
-                !((outNew > currentLimit && err > 0.0f) || (outNew < -currentLimit && err < 0.0f)))
+            /* (No band limit on the error: with P alone the controller stops
+             * where kp * error = current needed to hold the temperature, e.g.
+             * 3 K below 50 degC with kp 0.5 - the integrator must work there.) */
+            if (!((outNew > currentLimit && err > 0.0f) || (outNew < -currentLimit && err < 0.0f)))
                 I_val = iNew;
         }
-        if (I_val > I_SAT_P) I_val = I_SAT_P;
-        if (I_val < I_SAT_N) I_val = I_SAT_N;
+        /* the integrator alone never asks for more than the current limit */
+        if (I_val >  currentLimit) I_val =  currentLimit;
+        if (I_val < -currentLimit) I_val = -currentLimit;
         pidOut = P_val + I_val + D_val;
 
         currentUpdatedSettlingCycles = (uint8_t)(CURRENT_UPDATE_COOLDOWN_MS / CURRENT_CYCLE_MS) + 1u;
