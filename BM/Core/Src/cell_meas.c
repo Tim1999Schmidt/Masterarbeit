@@ -9,13 +9,20 @@
 #include "bm_config.h"
 #include "bm_io.h"
 #include "eis.h"
+#include "main.h"
+
+#ifdef HAL_IWDG_MODULE_ENABLED
+extern IWDG_HandleTypeDef hiwdg;          /* main.c; refreshed during the blocking zero calibration */
+#endif
 
 #define MEAS_INTERVAL_MS        100u
 #define BOOT_ZERO_DELAY_MS     1000u     /* automatic current zero calibration this long after reset:
                                           * hall sensor, INA332 and VDDA measurement have settled */
 #define VDDA_EVERY_N              10u     /* VDDA every 10th cycle = 1 s */
 #define OVERSAMPLE                16u     /* conversions per voltage / current reading */
-#define ZERO_OVERSAMPLE           64u     /* conversions for the current zero calibration */
+#define ZERO_OVERSAMPLE           64u     /* conversions per zero calibration reading */
+#define ZERO_READINGS             20u     /* readings averaged for the current zero calibration */
+#define ZERO_READING_INTERVAL_MS  50u     /* spacing: 20 x 50 ms = 1 s, also averages slow noise */
 #define VREFINT_OVERSAMPLE         8u     /* conversions per VDDA measurement */
 #define VREFINT_DUMMY_READS        2u     /* VREFINT buffer start-up after the channel switch */
 #define VREFINT_MIN_COUNTS      100.0f    /* below: VREFINT reading implausible, keep the old VDDA */
@@ -122,9 +129,23 @@ int32_t  CellMeas_GetCurrentMa(void)       { return currentMa; }
 uint32_t CellMeas_GetVddaMv(void)          { return (uint32_t)(vddaMv + 0.5f); }
 uint8_t  CellMeas_IsCurrentSaturated(void) { return currentSat; }
 
+/* Blocking for ZERO_READINGS * ZERO_READING_INTERVAL_MS (1 s): the readings are
+ * spread over time so that low-frequency noise of the hall sensor averages out
+ * as well, not only the noise within one ADC burst. */
 int32_t CellMeas_ZeroCurrent(void)
 {
-    const int32_t z = (int32_t)(CountsToMv(ReadCounts(ADC_READER_CH_CURRENT, ZERO_OVERSAMPLE)) + 0.5f);
+    float sum = 0.0f;
+    uint8_t i;
+    int32_t z;
+    for (i = 0u; i < ZERO_READINGS; i++)
+    {
+        sum += ReadCounts(ADC_READER_CH_CURRENT, ZERO_OVERSAMPLE);
+        HAL_Delay(ZERO_READING_INTERVAL_MS);
+#ifdef HAL_IWDG_MODULE_ENABLED
+        (void)HAL_IWDG_Refresh(&hiwdg);
+#endif
+    }
+    z = (int32_t)(CountsToMv(sum / (float)ZERO_READINGS) + 0.5f);
     if (z >= BM_I_ZERO_MIN_MV && z <= BM_I_ZERO_MAX_MV)   /* implausible (current flowing?): keep the old value */
         BmConfig_Get()->iZeroMv = (int16_t)z;
     return z;
