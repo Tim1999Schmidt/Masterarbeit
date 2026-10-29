@@ -32,6 +32,8 @@
 #define UINT32_DEC_DIGITS    10u      /* "4294967295" */
 #define CENTI_PER_UNIT      100.0f    /* values printed with 2 decimals */
 #define ASCII_DEL          0x7F       /* backspace key of many terminals */
+#define ASCII_FIRST_PRINTABLE ' '     /* characters outside ' '..'~' are ignored */
+#define ASCII_LAST_PRINTABLE  '~'
 #define EIS_CMD_ARGS          6u      /* eis chip fstart fstop amp wave avg */
 #define RD_CMD_ARGS           2u      /* rd node reg */
 
@@ -400,6 +402,11 @@ void UartComm_Update(void)
         {
             if (lineLen > 0u)
                 lineLen--;
+        }
+        else if (ch < ASCII_FIRST_PRINTABLE || ch > ASCII_LAST_PRINTABLE)
+        {
+            /* other control characters (e.g. 0x03 sent by some terminals on
+             * Ctrl+C when copying output) would corrupt the next command */
         }
         else if (lineLen < LINE_MAX && !(lineLen == 0u && ch == ' '))
         {
