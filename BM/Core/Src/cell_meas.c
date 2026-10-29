@@ -7,8 +7,12 @@
 #include "cell_meas.h"
 #include "adc_reader.h"
 #include "bm_config.h"
+#include "bm_io.h"
+#include "eis.h"
 
 #define MEAS_INTERVAL_MS        100u
+#define BOOT_ZERO_DELAY_MS     1000u     /* automatic current zero calibration this long after reset:
+                                          * hall sensor, INA332 and VDDA measurement have settled */
 #define VDDA_EVERY_N              10u     /* VDDA every 10th cycle = 1 s */
 #define OVERSAMPLE                16u     /* conversions per voltage / current reading */
 #define ZERO_OVERSAMPLE           64u     /* conversions for the current zero calibration */
@@ -34,6 +38,7 @@ static float    vddaMv = VDDA_NOMINAL_MV;
 static int32_t  voltageMv;
 static int32_t  currentMa;
 static uint8_t  currentSat;
+static uint8_t  bootZeroDone;     /* automatic zero calibration after reset done */
 
 /* Mean of n conversions without the highest and lowest one. */
 static float ReadCounts(uint32_t channel, uint32_t n)
@@ -84,6 +89,17 @@ void CellMeas_Process(void)
     if ((HAL_GetTick() - lastTick) < MEAS_INTERVAL_MS)
         return;
     lastTick = HAL_GetTick();
+
+    /* Automatic current zero calibration once after reset (RAM only, like the
+     * I2C control bit): CONNECT_Z is off after reset and no sweep runs, so no
+     * current can flow through the hall sensor. An implausible reading keeps
+     * the stored value (see CellMeas_ZeroCurrent()). */
+    if (!bootZeroDone && HAL_GetTick() >= BOOT_ZERO_DELAY_MS)
+    {
+        bootZeroDone = 1u;
+        if (!BmIo_GetConnectZ() && !EIS_IsBusy())
+            (void)CellMeas_ZeroCurrent();
+    }
 
     if (++cycle >= VDDA_EVERY_N)
     {

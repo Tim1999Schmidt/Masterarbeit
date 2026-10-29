@@ -23,9 +23,10 @@
  *   0x01  CONTROL      W   uint8   bit0 start EIS sweep (with 0x04..0x09), bit1 abort sweep,
  *                                  bit2 clear error (+ reset ERRQ), bit3 recalibrate the
  *                                  temperature front-end, bit4 current zero calibration
- *                                  (no current may flow; RAM only, as often as needed -
- *                                  lost at reset, then the value stored with the console
- *                                  command "izero" applies)                  (reads back 0)
+ *                                  (no current may flow; RAM only, as often as needed;
+ *                                  also done automatically 1 s after reset, with the value
+ *                                  stored by the console command "izero" as fallback if
+ *                                  that reading is implausible)              (reads back 0)
  *   0x02  ERROR_CODE   RO  uint8   0 none, 1 EIS config, 2 busy, 3 EIS communication,
  *                                  4 CONNECT_Z does not fit (cell: 0, stack: 1),
  *                                  5 temperature sensor, 6 TLE9015 ERRQ, 7 flash

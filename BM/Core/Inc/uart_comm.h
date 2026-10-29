@@ -26,6 +26,8 @@
  *   addr [0x08..0x77]       show / set the I2C address (stored in flash, active at once)
  *   neis [1|2]              show / set the number of TLE9010 (2 only on the first BM)
  *   izero                   current zero calibration (no current may flow!), stored
+ *                           (done automatically 1 s after reset, RAM only; the stored
+ *                           value is the fallback if that reading is implausible)
  *   recal                   recalibrate the temperature front-end
  *   clear                   clear the error code, reset the TLE9015 ERRQ
  *   rd node reg             bring-up: raw read of a TLE9010 register, shows the
