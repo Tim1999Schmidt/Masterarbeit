@@ -7,7 +7,7 @@
  * Measurement procedure, frequency table, waiting times and register contents
  * are those of the Zellhalter firmware (EIS_Messung / Sweep_Messung):
  *   wake-up, enumeration, sleep timer off -> per frequency: ZMEAS_CFG,
- *   ZMEAS_AMPLITUDE -> per average: start, wait (50 ms .. 4.5 s depending on the
+ *   ZMEAS_AMPLITUDE -> per average: start, wait (100 ms .. 4.5 s depending on the
  *   frequency), stop, read magnitude + phase, accumulate, 200 ms pause ->
  *   chain back to sleep.
  * The sweep no longer blocks: EIS_Process() advances it from the main loop, so

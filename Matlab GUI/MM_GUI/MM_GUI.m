@@ -37,7 +37,7 @@ function MM_GUI()
     MAX_AVERAGES         = 9;
     DEFAULT_START_INDEX  = 0;
     DEFAULT_STOP_INDEX   = NUM_FREQ - 1;
-    DEFAULT_AMPLITUDE    = 2;          % 100 mA (Listeneintrag)
+    DEFAULT_AMPLITUDE    = 6;          % 500 mA (Listeneintrag); unter 200 mA misst der TLE9010 Re ~1.7 % zu hoch
     DEFAULT_TSET_DEGC    = 25;
     DEFAULT_ILIM_A       = 3;          % = Standard und Maximum des PM
     PROGRESS_IDLE        = 255;

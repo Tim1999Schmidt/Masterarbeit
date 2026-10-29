@@ -27,7 +27,9 @@
 #define CFG_SETTLING_POS        0u
 /* fixed field values (Zellhalter firmware) */
 #define CFG_MUX_SEL             0u      /* input multiplexer: default */
-#define CFG_MEAS_TIME_25MS      0x7u    /* 0b111 = 25 ms measuring time */
+#define CFG_MEAS_TIME_50MS      0x6u    /* 0b110 = 50 ms measuring time (register description
+                                         * p. 62; Table 9 lists the codes reversed). 50 ms is the
+                                         * condition of the accuracy specification. */
 #define CFG_SETTLING_NONE       0u      /* no extra settling time */
 
 /* ---- ZMEAS_MAG register (0x0E): |Z| = mantissa * 2^-(MAG_EXP_OFFSET + exponent) * R_shunt */
@@ -58,17 +60,18 @@ static const struct
 };
 
 /* Waiting time after the start of a measurement, per frequency range
- * (values from Infineon, Zellhalter firmware): index <= lastIndex -> waitMs.
- * Each value covers the 25 ms measuring time, which the TLE9010 extends to at
- * least 3 excitation periods, plus the 1 ms default settling time. */
+ * (based on the Infineon values of the Zellhalter firmware): index <= lastIndex
+ * -> waitMs. Each value covers the 50 ms measuring time, which the TLE9010
+ * extends to at least 3 excitation periods, plus the 1 ms default settling time.
+ * The Infineon values were made for 25 ms; only the first range (50 ms) was too
+ * short for 50 ms and is now part of the 100 ms range. */
 static const struct
 {
     uint8_t  lastIndex;
     uint16_t waitMs;
 } waitTable[] =
 {
-    { 23u,   50u },     /* 7812.5 Hz .. 139.5 Hz */
-    { 27u,  100u },
+    { 27u,  100u },     /* 7812.5 Hz .. 69.75 Hz */
     { 31u,  200u },
     { 35u,  400u },
     { 39u,  700u },
@@ -117,7 +120,7 @@ static uint16_t CfgRegister(uint8_t index)
 {
     return (uint16_t)((CFG_MUX_SEL                                         << CFG_MUX_SEL_POS)   |
                       ((uint32_t)(cfg.waveform & 1u)                      << CFG_WAVEFORM_POS)  |
-                      (CFG_MEAS_TIME_25MS                                 << CFG_MEAS_TIME_POS) |
+                      (CFG_MEAS_TIME_50MS                                 << CFG_MEAS_TIME_POS) |
                       ((uint32_t)(index / EIS_FREQ_STEPS_PER_OCTAVE)      << CFG_FREQ_DIV_POS)  |
                       ((uint32_t)(index % EIS_FREQ_STEPS_PER_OCTAVE)      << CFG_FREQ_FUND_POS) |
                       (CFG_SETTLING_NONE                                  << CFG_SETTLING_POS));
