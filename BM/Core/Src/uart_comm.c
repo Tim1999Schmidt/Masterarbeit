@@ -343,6 +343,10 @@ static void ProcessLine(char *cmd)
             Put("ERR rd node reg (not during a sweep)\r\n");
             return;
         }
+        /* wake up and number the chain first: after reset or a sweep the
+         * TLE9010 sleep and have no node number, a read would get no reply */
+        Tle_Wakeup();
+        Tle_Enumerate((c->numEis >= BM_NUM_EIS_WITH_STACK) ? BM_NUM_EIS_WITH_STACK : BM_NUM_EIS_CELL_ONLY);
         len = Tle_ReadRaw((uint8_t)a[0], (uint8_t)a[1], buf, sizeof(buf));
         PutKV("OK n=", len);
         for (k = 0u; k < len; k++)
