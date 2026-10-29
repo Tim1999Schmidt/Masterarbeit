@@ -36,7 +36,7 @@
  *                       measurement (0.8..1.2, stored in flash): factor =
  *                       true current / displayed current x old factor
  *   addr [0x08..0x77]   set / show the I2C slave address (decimal or 0x hex),
- *                       stored in flash, effective immediately (default 0x28)
+ *                       stored in flash, effective immediately (default 0x20)
  *   (anything else)     ERR + list of commands
  *
  * Replies start with "OK" or "ERR". Log lines (';'-separated, header printed

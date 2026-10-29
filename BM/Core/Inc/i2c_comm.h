@@ -4,7 +4,7 @@
  * @brief   I2C1 slave register map of the BM towards the master board (MM),
  *          via the PCA9615 differential I2C buffer. Same protocol as the PM.
  *
- * Address: 7-bit, per board from flash (bm_config.h, default 0x30), set with
+ * Address: 7-bit, per board from flash (bm_config.h, default 0x10), set with
  * the "addr" command of the debug console.
  *
  *   Master write:  [register address][data bytes...]  (P)

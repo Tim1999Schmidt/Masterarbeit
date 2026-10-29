@@ -29,8 +29,8 @@
 /* defaults for an unprogrammed MM: the current setup with 2 BMs and 2 PMs */
 #define MM_DEFAULT_NUM_BM     2u
 #define MM_DEFAULT_NUM_PM     2u
-#define MM_DEFAULT_BM_ADDR_FIRST  0x30u   /* BM 1 = 0x30, BM 2 = 0x31, ... (BM default 0x30) */
-#define MM_DEFAULT_PM_ADDR_FIRST  0x28u   /* PM 1 = 0x28, PM 2 = 0x29, ... (PM default 0x28) */
+#define MM_DEFAULT_BM_ADDR_FIRST  0x10u   /* BM 1 = 0x10, BM 2 = 0x11, ... (BM default 0x10) */
+#define MM_DEFAULT_PM_ADDR_FIRST  0x20u   /* PM 1 = 0x20, PM 2 = 0x21, ... (PM default 0x20) */
 
 /* temperature source of a PM: the onboard PT1000, or the tab sensor of BM k
  * (1..numBm) whose temperature the MM forwards to the PM (T_EXT) */

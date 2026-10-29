@@ -24,7 +24,7 @@
 
 #define PM_I2C_ADDR_MIN       0x08u    /* 7-bit addresses 0x00..0x07 and 0x78..0x7F are reserved by the I2C standard */
 #define PM_I2C_ADDR_MAX       0x77u
-#define PM_DEFAULT_I2C_ADDR   0x28u    /* unprogrammed board; further PMs: 0x29, 0x2A, ... (BMs use 0x30 ...) */
+#define PM_DEFAULT_I2C_ADDR   0x20u    /* unprogrammed board; further PMs: 0x21, 0x22, ... (BMs use 0x10 ...) */
 
 /* current calibration factor in 1/10000: measured current x iGainScale / 10000 */
 #define PM_I_GAIN_SCALE_ONE   10000u   /* factor 1.0000 = nominal (default) */

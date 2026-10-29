@@ -9,7 +9,7 @@
  * Protocol
  * --------
  * PM acts as an I2C slave at the 7-bit address stored in flash
- * (pm_settings.h, default 0x28; set per board with the console command
+ * (pm_settings.h, default 0x20; set per board with the console command
  * "addr", so several PMs can share the bus).
  *
  *   Master write:  [register address][data bytes...]  (P)
