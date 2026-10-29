@@ -17,9 +17,14 @@ void App_Process(void)
 {
     const uint8_t busy = EIS_IsBusy();
 
-    /* a sweep that ended with a communication error latches the error */
-    if (wasBusy && !busy && EIS_GetLastResult() == EIS_ERR_COMM)
-        latchedError = APP_ERR_EIS_COMM;
+    /* a sweep that ended with a communication or saturation error latches the error */
+    if (wasBusy && !busy)
+    {
+        if (EIS_GetLastResult() == EIS_ERR_COMM)
+            latchedError = APP_ERR_EIS_COMM;
+        else if (EIS_GetLastResult() == EIS_ERR_ADC_SAT)
+            latchedError = APP_ERR_EIS_ADC_SAT;
+    }
     wasBusy = busy;
 }
 

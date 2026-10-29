@@ -36,6 +36,7 @@
 #define TLE_REG_ZMEAS_CTRL    0x0Du   /* start / stop */
 #define TLE_REG_ZMEAS_MAG     0x0Eu   /* result: magnitude (12-bit mantissa + 4-bit exponent) */
 #define TLE_REG_ZMEAS_PHASE   0x0Fu   /* result: phase (16 bit) */
+#define TLE_REG_ZMEAS_STAT    0x10u   /* ADC saturation flags of the last measurement */
 #define TLE_REG_NODE_ID       0x25u   /* enumeration */
 
 /* register values */
@@ -43,6 +44,9 @@
 #define TLE_SLEEP_TIMER_SLEEP_NOW    0x0000u  /* GOTO_SLEEP: go to sleep immediately */
 #define TLE_ZMEAS_CTRL_START         0x0001u
 #define TLE_ZMEAS_CTRL_STOP          0x0000u  /* stop / reset the measurement */
+#define TLE_ZMEAS_STAT_CLEAR         0x0000u  /* ZMEAS_STAT: reset both flags before a start */
+#define TLE_ZMEAS_STAT_V_ADC_INVALID 0x0001u  /* bit 0: voltage ADC saturated -> result invalid */
+#define TLE_ZMEAS_STAT_I_ADC_INVALID 0x0002u  /* bit 1: current ADC saturated -> result invalid */
 #define TLE_NODE_ID_CLEAR            0x0000u  /* NODE_ID: remove the node number */
 #define TLE_NODE_ID_FINAL_NODE       0x0800u  /* NODE_ID bit 11: last node of the chain */
 

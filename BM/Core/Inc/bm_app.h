@@ -33,7 +33,8 @@ typedef enum
     APP_ERR_CONNECT_STATE = 4,  /* CONNECT_Z does not fit the requested measurement */
     APP_ERR_TEMP_SENSOR   = 5,  /* tab temperature: PT1000 implausible / calibration failed */
     APP_ERR_ERRQ          = 6,  /* TLE9015 ERRQ latched (emergency signal / external error) */
-    APP_ERR_FLASH         = 7   /* saving the board settings failed */
+    APP_ERR_FLASH         = 7,  /* saving the board settings failed */
+    APP_ERR_EIS_ADC_SAT   = 8   /* TLE9010 ADC saturated, result invalid (sweep stopped) */
 } App_Error_t;
 
 /* STATUS bits (same for I2C and the console) */

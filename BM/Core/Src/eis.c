@@ -10,7 +10,8 @@
 
 #define R_SHUNT_OHM           0.1f      /* RS_CELL / RS_STACK, 100 mOhm */
 #define UOHM_PER_OHM          1.0e6f
-#define POWERUP_DELAY_MS      500u      /* TLE9010 start-up (stack chip is supplied only once CONNECT_Z is on) */
+#define POWERUP_DELAY_MS      500u      /* TLE9010 start-up (stack chip: without CONNECT_Z the rail is only
+                                         * supplied via the body diode of T1, i.e. one diode drop lower) */
 #define AVERAGE_PAUSE_MS      200u      /* pause between two averages (Zellhalter firmware) */
 #define STOP_TO_READ_DELAY_US 100u      /* after the stop command, before reading the result */
 #define HALF_PI_F             1.57079632679490f
@@ -57,14 +58,16 @@ static const struct
 };
 
 /* Waiting time after the start of a measurement, per frequency range
- * (values from Infineon, Zellhalter firmware): index <= lastIndex -> waitMs */
+ * (values from Infineon, Zellhalter firmware): index <= lastIndex -> waitMs.
+ * Each value covers the 25 ms measuring time, which the TLE9010 extends to at
+ * least 3 excitation periods, plus the 1 ms default settling time. */
 static const struct
 {
     uint8_t  lastIndex;
     uint16_t waitMs;
 } waitTable[] =
 {
-    { 23u,   50u },     /* 7812.5 Hz .. 19.5 Hz */
+    { 23u,   50u },     /* 7812.5 Hz .. 139.5 Hz */
     { 27u,  100u },
     { 31u,  200u },
     { 35u,  400u },
@@ -220,7 +223,7 @@ void EIS_Abort(void)
 
 void EIS_Process(void)
 {
-    uint16_t mag, phase;
+    uint16_t mag, phase, stat;
     float re, im;
     uint8_t n;
 
@@ -256,6 +259,9 @@ void EIS_Process(void)
         break;
 
     case ST_MEAS_START:
+        /* the saturation flags are sticky (rwh): clear them so that the check
+         * below only sees this measurement */
+        Tle_Write(node, TLE_REG_ZMEAS_STAT, TLE_ZMEAS_STAT_CLEAR);
         Tle_Write(node, TLE_REG_ZMEAS_CTRL, TLE_ZMEAS_CTRL_START);
         tick = HAL_GetTick();
         state = ST_MEAS_WAIT;
@@ -266,9 +272,17 @@ void EIS_Process(void)
             break;
         Tle_Write(node, TLE_REG_ZMEAS_CTRL, TLE_ZMEAS_CTRL_STOP);
         Tle_DelayUs(STOP_TO_READ_DELAY_US);
-        if (!Tle_Read(node, TLE_REG_ZMEAS_MAG, &mag) || !Tle_Read(node, TLE_REG_ZMEAS_PHASE, &phase))
+        if (!Tle_Read(node, TLE_REG_ZMEAS_MAG, &mag) || !Tle_Read(node, TLE_REG_ZMEAS_PHASE, &phase) ||
+            !Tle_Read(node, TLE_REG_ZMEAS_STAT, &stat))
         {
             Finish(EIS_ERR_COMM);
+            break;
+        }
+        /* plausibility: a saturated voltage or current ADC makes the result
+         * invalid (impedance / amplitude out of range, wiring) -> stop the sweep */
+        if ((stat & (TLE_ZMEAS_STAT_V_ADC_INVALID | TLE_ZMEAS_STAT_I_ADC_INVALID)) != 0u)
+        {
+            Finish(EIS_ERR_ADC_SAT);
             break;
         }
         EIS_RawToReIm(mag, phase, &re, &im);

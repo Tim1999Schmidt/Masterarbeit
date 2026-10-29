@@ -29,7 +29,8 @@
  *                                  that reading is implausible)              (reads back 0)
  *   0x02  ERROR_CODE   RO  uint8   0 none, 1 EIS config, 2 busy, 3 EIS communication,
  *                                  4 CONNECT_Z does not fit (cell: 0, stack: 1),
- *                                  5 temperature sensor, 6 TLE9015 ERRQ, 7 flash
+ *                                  5 temperature sensor, 6 TLE9015 ERRQ, 7 flash,
+ *                                  8 TLE9010 ADC saturated (sweep stopped)
  *   0x03  CONNECT_Z    RW  uint8   0 = single cell, 1 = cell on the parallel rail (stack
  *                                  measurement). Only changed while no sweep runs.
  *                                  The MM must check the cell voltages first!

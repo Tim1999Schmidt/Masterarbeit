@@ -74,7 +74,8 @@ typedef enum
     EIS_ERR_CONFIG  = 1, /* parameter out of range / stack chip not present */
     EIS_ERR_BUSY    = 2, /* a sweep is already running */
     EIS_ERR_COMM    = 3, /* TLE9010 did not answer a read (after 3 attempts) */
-    EIS_ERR_ABORTED = 4  /* aborted by command */
+    EIS_ERR_ABORTED = 4, /* aborted by command */
+    EIS_ERR_ADC_SAT = 5  /* TLE9010 voltage or current ADC saturated (ZMEAS_STAT), sweep stopped */
 } Eis_Result_t;
 
 void EIS_Init(void);

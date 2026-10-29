@@ -71,6 +71,7 @@
 #define BM_ERR_TEMP_SENSOR   5u
 #define BM_ERR_ERRQ          6u
 #define BM_ERR_FLASH         7u
+#define BM_ERR_EIS_ADC_SAT   8u   /* TLE9010 ADC saturated, sweep stopped */
 
 /* ---- value ranges ---- */
 #define BM_CONNECT_Z_OFF     0u
