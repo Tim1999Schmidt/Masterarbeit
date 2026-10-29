@@ -136,10 +136,10 @@ function MM_GUI()
     pGrid = uipanel(pBoards, 'BorderType', 'none', 'Units', 'normalized', 'Position', [0.005 0.10 0.99 0.895]);
     uicontrol(pBoards, 'Style', 'text', 'String', 'BM-Adr.:', 'Units', 'normalized', 'Position', [0.01 0.015 0.08 0.06], 'HorizontalAlignment', 'left');
     hBmAddr = uicontrol(pBoards, 'Style', 'edit', 'String', '', 'Units', 'normalized', 'Position', [0.09 0.015 0.17 0.07], ...
-        'TooltipString', 'z. B. 0x30, 0x31 (Reihenfolge = Zelle 1, Zelle 2, ...)');
+        'TooltipString', 'z. B. 0x10, 0x11 (Reihenfolge = Zelle 1, Zelle 2, ...)');
     uicontrol(pBoards, 'Style', 'text', 'String', 'PM-Adr.:', 'Units', 'normalized', 'Position', [0.27 0.015 0.08 0.06], 'HorizontalAlignment', 'left');
     hPmAddr = uicontrol(pBoards, 'Style', 'edit', 'String', '', 'Units', 'normalized', 'Position', [0.35 0.015 0.17 0.07], ...
-        'TooltipString', 'z. B. 0x28, 0x29 (Reihenfolge = Zelle 1, Zelle 2, ...)');
+        'TooltipString', 'z. B. 0x20, 0x21 (Reihenfolge = Zelle 1, Zelle 2, ...)');
     uicontrol(pBoards, 'Style', 'pushbutton', 'String', 'Liste übernehmen', 'Units', 'normalized', ...
         'Position', [0.53 0.01 0.16 0.08], 'Callback', @(~, ~) applyBoardList());
     uicontrol(pBoards, 'Style', 'pushbutton', 'String', 'Im MM speichern', 'Units', 'normalized', ...
@@ -436,7 +436,7 @@ function MM_GUI()
     %                  | Zelle 1     | Zelle 2     |
     %   Zellname       | [Zelle_A ]  | [Zelle_B ]  |   <- editierbar
     %   BM - EIS-Messung ---------------------------
-    %   Adresse        | 0x30        | 0x31        |
+    %   Adresse        | 0x10        | 0x11        |
     %   ...
     %   PM - Temperaturregelung --------------------
     %   ...
