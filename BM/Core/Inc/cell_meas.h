@@ -4,7 +4,9 @@
  * @brief   Cell voltage and cell current from the onboard ADC, plus VDDA.
  *
  * Voltage (U_Z+, PA6): divider 39k / 68k
- *      U_cell = U_ADC * (39k + 68k) / 68k                  (0 .. ~5.2 V)
+ *      U_cell = U_ADC * (39k + 68k) / 68k * (1 + uCorrPpm / 1e6)   (0 .. ~5.2 V)
+ * uCorrPpm (bm_config) corrects the divider tolerance; it is determined with
+ * "ucal <mV>" on the debug console against a reference measurement.
  *
  * Current (HALL_OUT -> INA332 -> PA2): Hall sensor CZ-3A01, 120 mV/A, VDD/2 at
  * 0 A, followed by the INA332 with gain 5 (0R between OUT and RG) and
@@ -43,5 +45,12 @@ uint8_t  CellMeas_IsCurrentSaturated(void); /* current path at an ADC rail: outs
  * if it lies within BM_I_ZERO_MIN_MV..MAX_MV (1.0..2.3 V), otherwise the old
  * value stays. Returns the measured zero voltage in mV. */
 int32_t CellMeas_ZeroCurrent(void);
+
+/* Voltage calibration: compares the present cell voltage (averaged over 1 s,
+ * blocking) with the reference refMv (e.g. multimeter at the cell) and sets
+ * uCorrPpm in the RAM copy of the config (caller saves it). Returns 0 and keeps
+ * the old value if refMv is outside BM_U_CAL_MIN_MV..MAX_MV or the correction
+ * would exceed +-BM_U_CORR_MAX_PPM. */
+uint8_t CellMeas_CalibrateVoltage(int32_t refMv);
 
 #endif /* CELL_MEAS_H */

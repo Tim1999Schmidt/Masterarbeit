@@ -42,8 +42,10 @@ extern UART_HandleTypeDef huart2;   /* initialised by MX_USART2_UART_Init() in m
 #define PMSRC_NUMBERS         2u      /* <pm>;<src> */
 #define PMGAIN_FIELDS         5u      /* PMGAIN;<pm>;<kp>;<ki>;<kd> */
 #define PMGAIN_NUMBERS        3u
-#define EIS_CMD_FIELDS        7u      /* EIS;<target>;<fstart>;<fstop>;<amp>;<wave>;<avg> */
-#define EIS_CMD_NUMBERS       5u
+#define EIS_CMD_FIELDS_MIN    7u      /* EIS;<target>;<fstart>;<fstop>;<amp>;<wave>;<avg> */
+#define EIS_CMD_FIELDS_MAX    8u      /* ...;<time> (optional, default BM_MEAS_TIME_DEFAULT) */
+#define EIS_CMD_NUMBERS_MAX   (EIS_CMD_FIELDS_MAX - SECOND_ARG)
+#define EIS_NUM_MEAS_TIME     5u      /* index of <time> among the numbers */
 #define FIRST_ARG             1u      /* field index of the first argument */
 #define SECOND_ARG            2u
 #define CELL_TARGET_PREFIX    'C'
@@ -339,11 +341,13 @@ static void CmdBm(const char *cmd, char **f, uint8_t n)
 static void CmdEis(const char *cmd, char **f, uint8_t n)
 {
     EisJob_t job;
-    int32_t v[EIS_CMD_NUMBERS];
+    int32_t v[EIS_CMD_NUMBERS_MAX];
     const char *t;
-    uint8_t k;
+    uint8_t k, numbers;
 
-    if (n != EIS_CMD_FIELDS || !ParseInts(f, SECOND_ARG, EIS_CMD_NUMBERS, v)) { Err(cmd, "PARAM"); return; }
+    if (n < EIS_CMD_FIELDS_MIN || n > EIS_CMD_FIELDS_MAX) { Err(cmd, "PARAM"); return; }
+    numbers = (uint8_t)(n - SECOND_ARG);
+    if (!ParseInts(f, SECOND_ARG, numbers, v)) { Err(cmd, "PARAM"); return; }
     t = f[FIRST_ARG];
     if (strcmp(t, "S") == 0)          job.type = EIS_JOB_STACK;
     else if (strcmp(t, "ALL") == 0)   job.type = EIS_JOB_ALL_CELLS;
@@ -358,7 +362,7 @@ static void CmdEis(const char *cmd, char **f, uint8_t n)
     }
     else { Err(cmd, "TARGET"); return; }
 
-    for (k = 0u; k < EIS_CMD_NUMBERS; k++)
+    for (k = 0u; k < numbers; k++)
         if (v[k] < 0 || v[k] > (int32_t)UINT8_MAX)
             { Err(cmd, "PARAM"); return; }
     job.fStart    = (uint8_t)v[0];
@@ -366,6 +370,7 @@ static void CmdEis(const char *cmd, char **f, uint8_t n)
     job.amplitude = (uint8_t)v[2];
     job.waveform  = (uint8_t)v[3];
     job.averages  = (uint8_t)v[4];
+    job.measTime  = (n == EIS_CMD_FIELDS_MAX) ? (uint8_t)v[EIS_NUM_MEAS_TIME] : BM_MEAS_TIME_DEFAULT;
 
     switch (EisSeq_Start(&job))
     {

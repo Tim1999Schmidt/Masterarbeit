@@ -37,6 +37,7 @@ function MM_GUI()
     MAX_AVERAGES         = 9;
     DEFAULT_START_INDEX  = 0;
     DEFAULT_STOP_INDEX   = NUM_FREQ - 1;
+    DEFAULT_MEAS_TIME    = 2;          % 50 ms (Listeneintrag) = Bedingung der Datenblatt-Genauigkeit
     DEFAULT_AMPLITUDE    = 6;          % 500 mA (Listeneintrag); unter 200 mA misst der TLE9010 Re ~1.7 % zu hoch
     DEFAULT_TSET_DEGC    = 25;
     DEFAULT_ILIM_A       = 3;          % = Standard und Maximum des PM
@@ -96,6 +97,7 @@ function MM_GUI()
 
     AMPLITUDE_TEXT = {'50 mA', '100 mA', '200 mA', '300 mA', '400 mA', '500 mA'};
     WAVEFORM_TEXT  = {'Sinus', 'Rechteck'};
+    MEAS_TIME_TEXT = {'25 ms', '50 ms', '100 ms', '200 ms', '400 ms', '800 ms', '1,6 s', '3,2 s'};  % Index 0..7 wie im BM
     FREQ_HZ        = frequencyTable();
     FREQ_TEXT      = arrayfun(@(k) sprintf('(%2d) %8.2f Hz', k - 1, FREQ_HZ(k)), 1:NUM_FREQ, ...
                               'UniformOutput', false);
@@ -112,7 +114,7 @@ function MM_GUI()
     meas       = containers.Map();           % laufende Messung je Ziel ('C1', 'S', ...)
     jobInfo    = struct('folder', pwd, 'baseName', 'Messung', 'timestamp', '', 'comment', '', ...
                         'cellNames', strings(0, 1), 'settings', struct('fStart', DEFAULT_START_INDEX, ...
-                        'fStop', DEFAULT_STOP_INDEX, 'amplitude', '', 'waveform', '', 'averages', 1));  % laufender Auftrag
+                        'fStop', DEFAULT_STOP_INDEX, 'amplitude', '', 'waveform', '', 'averages', 1, 'measTime', ''));  % laufender Auftrag
     plotHandles = containers.Map();
 
     %% ---- Fenster ---------------------------------------------------------------
@@ -188,7 +190,7 @@ function MM_GUI()
     hWave   = uicontrol(pEis, 'Style', 'popupmenu', 'String', WAVEFORM_TEXT, 'Units', 'normalized', 'Position', [0.16 0.34 0.26 0.11]);
     hAvg    = uicontrol(pEis, 'Style', 'popupmenu', 'String', arrayfun(@num2str, 1:MAX_AVERAGES, 'UniformOutput', false), ...
                         'Units', 'normalized', 'Position', [0.16 0.21 0.26 0.11]);
-    labelsRight = {'Zielordner:', 'Dateiname:', 'Kommentar:'};
+    labelsRight = {'Zielordner:', 'Dateiname:', 'Kommentar:', 'Messdauer:'};
     for row = 1:numel(labelsRight)
         uicontrol(pEis, 'Style', 'text', 'String', labelsRight{row}, 'Units', 'normalized', ...
             'Position', [0.45 0.86 - (row - 1) * LABEL_ROW_STEP 0.11 0.1], 'HorizontalAlignment', 'left');
@@ -198,8 +200,11 @@ function MM_GUI()
         'Callback', @(~, ~) chooseFolder());
     hFilename = uicontrol(pEis, 'Style', 'edit', 'String', 'Messung', 'Units', 'normalized', 'Position', [0.56 0.74 0.43 0.1]);
     hComment  = uicontrol(pEis, 'Style', 'edit', 'String', '', 'Units', 'normalized', 'Position', [0.56 0.61 0.43 0.1]);
-    uicontrol(pEis, 'Style', 'text', 'String', 'Zellnamen: in der Zellenübersicht oben eintragen', 'Units', 'normalized', ...
-        'Position', [0.45 0.47 0.54 0.1], 'HorizontalAlignment', 'left', 'ForegroundColor', [0.4 0.4 0.4]);
+    set(hFilename, 'TooltipString', 'Zellnamen: in der Zellenübersicht oben eintragen');
+    hMeasTime = uicontrol(pEis, 'Style', 'popupmenu', 'String', MEAS_TIME_TEXT, 'Value', DEFAULT_MEAS_TIME, ...
+        'Units', 'normalized', 'Position', [0.56 0.47 0.2 0.11], 'TooltipString', ...
+        sprintf(['Messdauer je Einzelmessung und Frequenz.\nUnterhalb von ca. 60 Hz verlängert der TLE9010 ' ...
+                 'die Messung automatisch auf mindestens 3 Perioden.\nDie Datenblatt-Genauigkeit gilt ab 50 ms.']));
     hStart = uicontrol(pEis, 'Style', 'pushbutton', 'String', 'Messung starten', 'Units', 'normalized', 'Position', [0.45 0.22 0.26 0.14], ...
         'FontWeight', 'bold', 'Callback', @(~, ~) startEis());
     hAbort = uicontrol(pEis, 'Style', 'pushbutton', 'String', 'Abbrechen', 'Units', 'normalized', 'Position', [0.73 0.22 0.26 0.14], ...
@@ -662,16 +667,18 @@ function MM_GUI()
         jobInfo.settings  = struct('fStart', fStart, 'fStop', fStop, ...
                                    'amplitude', AMPLITUDE_TEXT{get(hAmp, 'Value')}, ...
                                    'waveform', WAVEFORM_TEXT{get(hWave, 'Value')}, ...
-                                   'averages', get(hAvg, 'Value'));
+                                   'averages', get(hAvg, 'Value'), ...
+                                   'measTime', MEAS_TIME_TEXT{get(hMeasTime, 'Value')});
         meas = containers.Map();
         cla(ax);
         plotHandles = containers.Map();
-        sendCommand(sprintf('EIS;%s;%d;%d;%d;%d;%d', target, fStart, fStop, ...
-                            get(hAmp, 'Value') - 1, get(hWave, 'Value') - 1, get(hAvg, 'Value')));
+        sendCommand(sprintf('EIS;%s;%d;%d;%d;%d;%d;%d', target, fStart, fStop, ...
+                            get(hAmp, 'Value') - 1, get(hWave, 'Value') - 1, get(hAvg, 'Value'), ...
+                            get(hMeasTime, 'Value') - 1));
     end
 
     function onEisBegin(f)
-        % EISBEGIN;target;fstart;fstop;amp;wave;avg
+        % EISBEGIN;target;fstart;fstop;amp;wave;avg;time
         t = char(f(2));
         m.target = t;
         m.cells  = zeros(0, 3);          % [BM, U mV, T degC]

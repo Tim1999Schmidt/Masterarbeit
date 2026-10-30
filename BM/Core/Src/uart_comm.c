@@ -25,7 +25,7 @@
 #define RX_BUF_SIZE          32u      /* power of two */
 #define TX_BUF_SIZE         256u      /* power of two */
 #define LINE_MAX             40u
-#define MAX_ARGS              6u
+#define MAX_ARGS              7u
 #define LOG_MIN_PERIOD_MS   100u
 #define RES_LINE_SPACE       48u      /* free TX space needed for one result line */
 #define RES_PRINT_NONE     0xFFu      /* resPrint: no result table being printed */
@@ -34,7 +34,9 @@
 #define ASCII_DEL          0x7F       /* backspace key of many terminals */
 #define ASCII_FIRST_PRINTABLE ' '     /* characters outside ' '..'~' are ignored */
 #define ASCII_LAST_PRINTABLE  '~'
-#define EIS_CMD_ARGS          6u      /* eis chip fstart fstop amp wave avg */
+#define EIS_CMD_ARGS_MIN      6u      /* eis chip fstart fstop amp wave avg */
+#define EIS_CMD_ARGS_MAX      7u      /* ... [time] (measuring time index, default 50 ms) */
+#define EIS_ARG_MEAS_TIME     6u      /* argument index of the optional measuring time */
 #define RD_CMD_ARGS           2u      /* rd node reg */
 
 static volatile uint8_t  rxBuf[RX_BUF_SIZE];
@@ -230,6 +232,7 @@ static void ProcessLine(char *cmd)
         PutHex2(c->i2cAddr);
         PutKV(" neis=", c->numEis);
         PutKV(" izero=", c->iZeroMv);
+        PutKV(" ucorr=", c->uCorrPpm);
         Put("\r\n   ");
         PrintMeasurements();
     }
@@ -251,16 +254,17 @@ static void ProcessLine(char *cmd)
     else if (strcmp(cmd, "eis") == 0)
     {
         Eis_Config_t e;
-        if (n != (int8_t)EIS_CMD_ARGS)
+        if (n < (int8_t)EIS_CMD_ARGS_MIN || n > (int8_t)EIS_CMD_ARGS_MAX)
         {
-            Put("ERR eis chip fstart fstop amp wave avg\r\n");
+            Put("ERR eis chip fstart fstop amp wave avg [time]\r\n");
             return;
         }
         e.chip = (uint8_t)a[0]; e.fStart = (uint8_t)a[1]; e.fStop = (uint8_t)a[2];
         e.amplitude = (uint8_t)a[3]; e.waveform = (uint8_t)a[4]; e.averages = (uint8_t)a[5];
+        e.measTime  = (n == (int8_t)EIS_CMD_ARGS_MAX) ? (uint8_t)a[EIS_ARG_MEAS_TIME] : EIS_MEAS_TIME_DEFAULT;
         {
             uint8_t k;
-            for (k = 0u; k < EIS_CMD_ARGS; k++)
+            for (k = 0u; k < (uint8_t)n; k++)
                 if (a[k] < 0 || a[k] > (int32_t)UINT8_MAX)
                     e.averages = 0u;               /* -> rejected as config error */
         }
@@ -327,6 +331,22 @@ static void ProcessLine(char *cmd)
         Put(" mV\r\n");
         if (!BmConfig_Save()) { App_SetError(APP_ERR_FLASH); ReplyError(APP_ERR_FLASH); }
     }
+    else if (strcmp(cmd, "ucal") == 0)
+    {
+        if (n == 1)
+        {
+            if (a[0] == 0)
+                c->uCorrPpm = BM_DEFAULT_U_CORR_PPM;           /* "ucal 0": remove the correction */
+            else if (!CellMeas_CalibrateVoltage(a[0]))
+            {
+                Put("ERR ucal 2000..5000 mV, max +-3 % - kept\r\n");
+                return;
+            }
+            if (!BmConfig_Save()) { App_SetError(APP_ERR_FLASH); ReplyError(APP_ERR_FLASH); return; }
+        }
+        PutKV("OK ucorr=", c->uCorrPpm);
+        Put(" ppm\r\n");
+    }
     else if (strcmp(cmd, "recal") == 0)
     {
         TempSensor_Recalibrate();
@@ -370,7 +390,7 @@ static void ProcessLine(char *cmd)
     }
     else
     {
-        Put("ERR ? s m conz eis abort res addr neis izero recal clear rd log\r\n");
+        Put("ERR ? s m conz eis abort res addr neis izero ucal recal clear rd log\r\n");
     }
 }
 

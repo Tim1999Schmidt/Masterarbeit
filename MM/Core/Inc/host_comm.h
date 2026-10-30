@@ -45,13 +45,14 @@
  *                                 temperature / current zero, RAM only)
  *   (<bm> = 0 means all BMs; not while an EIS job runs)
  * ---- EIS --------------------------------------------------------------------
- *   EIS;<target>;<fstart>;<fstop>;<amp>;<wave>;<avg>
+ *   EIS;<target>;<fstart>;<fstop>;<amp>;<wave>;<avg>[;<time>]
  *       target: C<k> = cell of BM k, S = stack, ALL = all cells one after
  *       another, ALLS = all cells and then the stack
- *       fstart/fstop 0..51, amp 0..5, wave 0/1, avg 1..9 (as on the BM)
+ *       fstart/fstop 0..51, amp 0..5, wave 0/1, avg 1..9, time 0..7 = measuring
+ *       time 25, 50, 100 .. 3200 ms (optional, default 1 = 50 ms) (as on the BM)
  *   ABORT
  *   Lines of a running job (see eis_sequencer.h):
- *     EISBEGIN;<target>;<fstart>;<fstop>;<amp>;<wave>;<avg>
+ *     EISBEGIN;<target>;<fstart>;<fstop>;<amp>;<wave>;<avg>;<time>
  *     EISCELL;<target>;<bm>;<u_mV>;<t_tab_cdegC>      cell(s) involved
  *     PROG;<target>;<frequency index>
  *     RES;<target>;<index>;<f_cHz>;<re_uOhm>;<im_uOhm>

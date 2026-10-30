@@ -10,6 +10,8 @@
  *   i2cAddr   7-bit I2C slave address towards the MM (unique per board)
  *   numEis    1 = only the cell TLE9010, 2 = cell + stack TLE9010 (first BM)
  *   iZeroMv   ADC voltage of the current path at 0 A (current zero calibration)
+ *   uCorrPpm  correction of the cell voltage measurement in ppm (divider
+ *             tolerance), set with "ucal <reference mV>"
  *
  * The page used is the last 2 KB page of the 32 KB flash (page 15,
  * 0x08007800..0x08007FFF). It is excluded from the program in the linker
@@ -40,11 +42,16 @@
 #define BM_DEFAULT_I_ZERO_MV  1650     /* nominal current zero: REF1 = 1.65 V = VDD/2 */
 #define BM_I_ZERO_MIN_MV      1000     /* plausible range of a stored zero; outside -> default */
 #define BM_I_ZERO_MAX_MV      2300
+#define BM_DEFAULT_U_CORR_PPM 0        /* no voltage correction */
+#define BM_U_CORR_MAX_PPM     30000    /* +-3 %: more than two 1 % divider resistors can explain */
+#define BM_U_CAL_MIN_MV       2000     /* plausible reference voltage for "ucal" */
+#define BM_U_CAL_MAX_MV       5000
 typedef struct
 {
     uint8_t i2cAddr;      /* BM_I2C_ADDR_MIN..BM_I2C_ADDR_MAX */
     uint8_t numEis;       /* BM_NUM_EIS_CELL_ONLY or BM_NUM_EIS_WITH_STACK */
     int16_t iZeroMv;      /* mV at the ADC for 0 A (default 1650 until "izero" is stored) */
+    int16_t uCorrPpm;     /* cell voltage correction: U = U_measured * (1 + uCorrPpm / 1e6) */
 } BmConfig_t;
 
 /* Loads the settings from flash (defaults if the page is empty / invalid). */
@@ -56,7 +63,7 @@ BmConfig_t *BmConfig_Get(void);
 /* Writes the RAM copy to flash (erase + program, ~25 ms, CPU stalls meanwhile).
  * Does nothing if the flash already holds exactly these values, so repeated
  * calls do not wear the flash (STM32C0: >= 10000 erase cycles per page).
- * Only the console commands addr / neis / izero call it - never the normal
+ * Only the console commands addr / neis / izero / ucal call it - never the normal
  * operation. Returns 1 on success. */
 uint8_t BmConfig_Save(void);
 

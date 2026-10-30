@@ -20,9 +20,10 @@ extern IWDG_HandleTypeDef hiwdg;          /* main.c; refreshed during the blocki
                                           * hall sensor, INA332 and VDDA measurement have settled */
 #define VDDA_EVERY_N              10u     /* VDDA every 10th cycle = 1 s */
 #define OVERSAMPLE                16u     /* conversions per voltage / current reading */
-#define ZERO_OVERSAMPLE           64u     /* conversions per zero calibration reading */
-#define ZERO_READINGS             20u     /* readings averaged for the current zero calibration */
-#define ZERO_READING_INTERVAL_MS  50u     /* spacing: 20 x 50 ms = 1 s, also averages slow noise */
+#define CAL_OVERSAMPLE            64u     /* conversions per calibration reading */
+#define CAL_READINGS              20u     /* readings averaged for a calibration (current zero, voltage) */
+#define CAL_READING_INTERVAL_MS   50u     /* spacing: 20 x 50 ms = 1 s, also averages slow noise */
+#define PPM_PER_UNIT          1.0e6f
 #define VREFINT_OVERSAMPLE         8u     /* conversions per VDDA measurement */
 #define VREFINT_DUMMY_READS        2u     /* VREFINT buffer start-up after the channel switch */
 #define VREFINT_MIN_COUNTS      100.0f    /* below: VREFINT reading implausible, keep the old VDDA */
@@ -77,6 +78,30 @@ static float CountsToMv(float counts)
     return counts * vddaMv / ADC_FULL_SCALE;
 }
 
+/* gain correction of the voltage path (divider tolerance), from bm_config */
+static float VoltageGain(void)
+{
+    return 1.0f + (float)BmConfig_Get()->uCorrPpm / PPM_PER_UNIT;
+}
+
+/* Blocking for CAL_READINGS * CAL_READING_INTERVAL_MS (1 s): the readings are
+ * spread over time so that low-frequency noise averages out as well, not only
+ * the noise within one ADC burst. */
+static float ReadCalibrationCounts(uint32_t channel)
+{
+    float sum = 0.0f;
+    uint8_t i;
+    for (i = 0u; i < CAL_READINGS; i++)
+    {
+        sum += ReadCounts(channel, CAL_OVERSAMPLE);
+        HAL_Delay(CAL_READING_INTERVAL_MS);
+#ifdef HAL_IWDG_MODULE_ENABLED
+        (void)HAL_IWDG_Refresh(&hiwdg);
+#endif
+    }
+    return sum / (float)CAL_READINGS;
+}
+
 static float ZeroMv(void)
 {
     return (float)BmConfig_Get()->iZeroMv;      /* 1650 mV until a zero calibration is stored */
@@ -115,7 +140,7 @@ void CellMeas_Process(void)
     }
 
     cU = ReadCounts(ADC_READER_CH_VOLTAGE, OVERSAMPLE);
-    mv = CountsToMv(cU) * U_DIVIDER;
+    mv = CountsToMv(cU) * U_DIVIDER * VoltageGain();
     voltageMv = (int32_t)(mv + 0.5f);
 
     cI = ReadCounts(ADC_READER_CH_CURRENT, OVERSAMPLE);
@@ -129,24 +154,25 @@ int32_t  CellMeas_GetCurrentMa(void)       { return currentMa; }
 uint32_t CellMeas_GetVddaMv(void)          { return (uint32_t)(vddaMv + 0.5f); }
 uint8_t  CellMeas_IsCurrentSaturated(void) { return currentSat; }
 
-/* Blocking for ZERO_READINGS * ZERO_READING_INTERVAL_MS (1 s): the readings are
- * spread over time so that low-frequency noise of the hall sensor averages out
- * as well, not only the noise within one ADC burst. */
+/* Blocking for 1 s (see ReadCalibrationCounts()). */
 int32_t CellMeas_ZeroCurrent(void)
 {
-    float sum = 0.0f;
-    uint8_t i;
-    int32_t z;
-    for (i = 0u; i < ZERO_READINGS; i++)
-    {
-        sum += ReadCounts(ADC_READER_CH_CURRENT, ZERO_OVERSAMPLE);
-        HAL_Delay(ZERO_READING_INTERVAL_MS);
-#ifdef HAL_IWDG_MODULE_ENABLED
-        (void)HAL_IWDG_Refresh(&hiwdg);
-#endif
-    }
-    z = (int32_t)(CountsToMv(sum / (float)ZERO_READINGS) + 0.5f);
+    const int32_t z = (int32_t)(CountsToMv(ReadCalibrationCounts(ADC_READER_CH_CURRENT)) + 0.5f);
     if (z >= BM_I_ZERO_MIN_MV && z <= BM_I_ZERO_MAX_MV)   /* implausible (current flowing?): keep the old value */
         BmConfig_Get()->iZeroMv = (int16_t)z;
     return z;
+}
+/* Blocking for 1 s (see ReadCalibrationCounts()). */
+uint8_t CellMeas_CalibrateVoltage(int32_t refMv)
+{
+    const float rawMv = CountsToMv(ReadCalibrationCounts(ADC_READER_CH_VOLTAGE)) * U_DIVIDER;
+    float corr;
+
+    if (refMv < BM_U_CAL_MIN_MV || refMv > BM_U_CAL_MAX_MV || rawMv <= 0.0f)
+        return 0u;
+    corr = ((float)refMv / rawMv - 1.0f) * PPM_PER_UNIT;
+    if (corr > (float)BM_U_CORR_MAX_PPM || corr < -(float)BM_U_CORR_MAX_PPM)
+        return 0u;                                  /* too large for a divider tolerance: keep the old value */
+    BmConfig_Get()->uCorrPpm = (int16_t)((corr >= 0.0f) ? (corr + 0.5f) : (corr - 0.5f));
+    return 1u;
 }

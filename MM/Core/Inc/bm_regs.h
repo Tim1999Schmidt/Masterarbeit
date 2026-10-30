@@ -21,26 +21,27 @@
 #define BM_REG_AMPLITUDE     0x07u   /* RW uint8  0..5 = 50..500 mA */
 #define BM_REG_WAVEFORM      0x08u   /* RW uint8  0 sine, 1 rectangle */
 #define BM_REG_AVERAGES      0x09u   /* RW uint8  1..9 */
-#define BM_REG_PROGRESS      0x0Au   /* RO uint8  frequency index being measured, 0xFF idle */
-#define BM_REG_NUM_EIS       0x0Bu   /* RO uint8  1 or 2 TLE9010 on this board */
-#define BM_REG_U_CELL        0x0Cu   /* RO uint16 mV */
-#define BM_REG_I_CELL        0x0Eu   /* RO int16  mA */
-#define BM_REG_T_TAB         0x10u   /* RO int16  degC x100 */
-#define BM_REG_CAL_LOW       0x12u   /* RO uint16 raw counts */
-#define BM_REG_CAL_HIGH      0x14u   /* RO uint16 raw counts */
-#define BM_REG_RES_INDEX     0x16u   /* RW uint8  frequency index of the result window */
-#define BM_REG_RES_VALID     0x17u   /* RO uint8  1 = RES_INDEX belongs to the last completed sweep */
-#define BM_REG_RES_FREQ      0x18u   /* RO uint32 0.01 Hz */
-#define BM_REG_RES_RE        0x1Cu   /* RO int32  uOhm */
-#define BM_REG_RES_IM        0x20u   /* RO int32  uOhm */
-#define BM_REG_MAP_SIZE      0x24u
+#define BM_REG_MEAS_TIME     0x0Au   /* RW uint8  0..7 = 25, 50, 100 .. 3200 ms */
+#define BM_REG_PROGRESS      0x0Bu   /* RO uint8  frequency index being measured, 0xFF idle */
+#define BM_REG_NUM_EIS       0x0Cu   /* RO uint8  1 or 2 TLE9010 on this board */
+#define BM_REG_U_CELL        0x0Du   /* RO uint16 mV */
+#define BM_REG_I_CELL        0x0Fu   /* RO int16  mA */
+#define BM_REG_T_TAB         0x11u   /* RO int16  degC x100 */
+#define BM_REG_CAL_LOW       0x13u   /* RO uint16 raw counts */
+#define BM_REG_CAL_HIGH      0x15u   /* RO uint16 raw counts */
+#define BM_REG_RES_INDEX     0x17u   /* RW uint8  frequency index of the result window */
+#define BM_REG_RES_VALID     0x18u   /* RO uint8  1 = RES_INDEX belongs to the last completed sweep */
+#define BM_REG_RES_FREQ      0x19u   /* RO uint32 0.01 Hz */
+#define BM_REG_RES_RE        0x1Du   /* RO int32  uOhm */
+#define BM_REG_RES_IM        0x21u   /* RO int32  uOhm */
+#define BM_REG_MAP_SIZE      0x25u
 
 /* telemetry block read in one go: STATUS .. CAL_HIGH */
 #define BM_TELEMETRY_FIRST   BM_REG_STATUS
 #define BM_TELEMETRY_LEN     (BM_REG_CAL_HIGH + 2u - BM_REG_STATUS)
-/* EIS parameter block written in one go: EIS_CHIP .. AVERAGES */
+/* EIS parameter block written in one go: EIS_CHIP .. MEAS_TIME */
 #define BM_EIS_PARAM_FIRST   BM_REG_EIS_CHIP
-#define BM_EIS_PARAM_LEN     (BM_REG_AVERAGES + 1u - BM_REG_EIS_CHIP)
+#define BM_EIS_PARAM_LEN     (BM_REG_MEAS_TIME + 1u - BM_REG_EIS_CHIP)
 /* result window read in one go: RES_VALID .. RES_IM */
 #define BM_RESULT_FIRST      BM_REG_RES_VALID
 #define BM_RESULT_LEN        (BM_REG_RES_IM + 4u - BM_REG_RES_VALID)
@@ -85,6 +86,8 @@
 #define BM_WAVE_RECTANGLE    1u
 #define BM_AVERAGES_MIN      1u
 #define BM_AVERAGES_MAX      9u
+#define BM_MEAS_TIME_COUNT   8u       /* 0..7 = 25, 50, 100, 200, 400, 800, 1600, 3200 ms */
+#define BM_MEAS_TIME_DEFAULT 1u       /* 50 ms */
 #define BM_PROGRESS_IDLE     0xFFu
 #define BM_NUM_EIS_WITH_STACK 2u
 

@@ -49,8 +49,10 @@ function fullFilePath = EIS_Textdatei_schreiben(m, jobInfo, targetLabel)
         end
     end
     fprintf(fid, '# \n');
-    fprintf(fid, '# %-15s %-15s %-12s %-12s %-12s\n', 'Start_Index:', 'Stopp_Index:', 'Amplitude:', 'Signalform:', 'Mittelung:');
-    fprintf(fid, '# %-15d %-15d %-12s %-12s %-12d\n', s.fStart, s.fStop, s.amplitude, s.waveform, s.averages);
+    fprintf(fid, '# %-15s %-15s %-12s %-12s %-12s %-12s\n', 'Start_Index:', 'Stopp_Index:', 'Amplitude:', ...
+            'Signalform:', 'Mittelung:', 'Messdauer:');
+    fprintf(fid, '# %-15d %-15d %-12s %-12s %-12d %-12s\n', s.fStart, s.fStop, s.amplitude, s.waveform, ...
+            s.averages, s.measTime);
     fprintf(fid, '\n');
     fprintf(fid, '  %10s\t%12s\t%12s\n', 'freq/Hz', 'Re(Z)/Ohm', 'Im(Z)/Ohm');
     for k = 1:size(m.data, 1)

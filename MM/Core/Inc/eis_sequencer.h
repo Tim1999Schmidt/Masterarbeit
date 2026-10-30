@@ -53,6 +53,7 @@ typedef struct
     uint8_t amplitude;
     uint8_t waveform;
     uint8_t averages;
+    uint8_t measTime;          /* 0..BM_MEAS_TIME_COUNT-1 = 25 .. 3200 ms */
 } EisJob_t;
 
 typedef enum

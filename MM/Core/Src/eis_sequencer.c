@@ -13,7 +13,8 @@
 #define CONNECT_SETTLE_MS        100u     /* CONNECT_Z switched -> check its state */
 #define START_CHECK_DELAY_MS     100u     /* START sent -> BM must report "busy" */
 #define EIS_POLL_PERIOD_MS       250u     /* STATUS / PROGRESS polling during a sweep */
-#define EIS_STALL_TIMEOUT_MS   60000u     /* longest step: 9 averages x (4.5 s + 0.2 s) = 42 s */
+#define EIS_STALL_TIMEOUT_MS   60000u     /* longest step: 9 averages x (4.5 s + 0.2 s) = 42 s
+                                           * (3200 ms measuring time: BM waits 4.0 s < 4.5 s) */
 #define POLL_FAIL_LIMIT            8u     /* failed polls in a row -> BM counts as lost */
 #define READ_RETRIES               3u     /* per result index */
 #define TARGET_NAME_LEN            4u     /* "C8" / "S" + terminator */
@@ -145,8 +146,8 @@ static uint8_t BeginTarget(void)
     isStack = (targets[targetPos] == STACK_TARGET) ? 1u : 0u;
     measBm  = NO_BM;
     SetName(targets[targetPos]);
-    (void)HostComm_SendLine("EISBEGIN;%s;%u;%u;%u;%u;%u", name, job.fStart, job.fStop,
-                            job.amplitude, job.waveform, job.averages);
+    (void)HostComm_SendLine("EISBEGIN;%s;%u;%u;%u;%u;%u;%u", name, job.fStart, job.fStop,
+                            job.amplitude, job.waveform, job.averages, job.measTime);
 
     if (!isStack)
     {
@@ -222,6 +223,7 @@ EisSeqResult_t EisSeq_Start(const EisJob_t *j)
     if (j->fStart > BM_FREQ_INDEX_MAX || j->fStop > BM_FREQ_INDEX_MAX || j->fStop < j->fStart ||
         j->amplitude >= BM_AMPLITUDE_COUNT || j->waveform > BM_WAVE_RECTANGLE ||
         j->averages < BM_AVERAGES_MIN || j->averages > BM_AVERAGES_MAX ||
+        j->measTime >= BM_MEAS_TIME_COUNT ||
         (j->type == EIS_JOB_CELL && j->cellBm >= NumBm()))
         return EIS_SEQ_ERR_PARAM;
     if ((j->type == EIS_JOB_STACK || j->type == EIS_JOB_ALL_CELLS_STACK) && FindStackBm() == NO_BM)
@@ -290,7 +292,7 @@ void EisSeq_Process(void)
         const uint8_t params[BM_EIS_PARAM_LEN] =
         {
             isStack ? BM_EIS_CHIP_STACK : BM_EIS_CHIP_CELL,
-            job.fStart, job.fStop, job.amplitude, job.waveform, job.averages
+            job.fStart, job.fStop, job.amplitude, job.waveform, job.averages, job.measTime
         };
         if (!Boards_BmControl(measBm, BM_CTRL_CLEAR_ERROR) ||
             !Boards_BmWriteEisParams(measBm, params) ||

@@ -12,14 +12,15 @@
  *
  *   s                       status: st (STATUS bits as I2C), err, conz, errq,
  *                           loc/ext (ERR_LOC_OUT / ERR_EXT_OUT), prog, addr,
- *                           neis, izero + measurements
+ *                           neis, izero, ucorr (ppm) + measurements
  *   m                       measurements: u (mV), i (mA), t (degC), vdda (mV),
  *                           cal (raw counts on the temperature references)
  *   conz [0|1]              show / set CONNECT_Z (not during a sweep)
- *   eis c f1 f2 a w n       start sweep: chip (0 cell, 1 stack), start and stop
+ *   eis c f1 f2 a w n [t]   start sweep: chip (0 cell, 1 stack), start and stop
  *                           frequency index (0 = 7812.5 Hz .. 51 = 1.09 Hz),
  *                           amplitude 0..5 (50..500 mA), waveform (0 sine,
- *                           1 rectangle), averages 1..9
+ *                           1 rectangle), averages 1..9, optional measuring time
+ *                           0..7 = 25, 50, 100 .. 3200 ms (without: 1 = 50 ms)
  *   abort                   stop the sweep
  *   res                     results of the last sweep:
  *                           RES;idx;f_Hz;re_uOhm;im_uOhm
@@ -28,6 +29,11 @@
  *   izero                   current zero calibration (no current may flow!), stored
  *                           (done automatically 1 s after reset, RAM only; the stored
  *                           value is the fallback if that reading is implausible)
+ *   ucal [mV|0]             cell voltage correction: "ucal 4107" compares the cell
+ *                           voltage (averaged over 1 s) with this reference value
+ *                           (multimeter at the cell) and stores the correction in
+ *                           flash (max. +-3 %); "ucal 0" removes it; without a
+ *                           value: show it (ppm)
  *   recal                   recalibrate the temperature front-end
  *   clear                   clear the error code, reset the TLE9015 ERRQ
  *   rd node reg             bring-up: raw read of a TLE9010 register, shows the

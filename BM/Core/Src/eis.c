@@ -14,6 +14,8 @@
                                          * supplied via the body diode of T1, i.e. one diode drop lower) */
 #define AVERAGE_PAUSE_MS      200u      /* pause between two averages (Zellhalter firmware) */
 #define STOP_TO_READ_DELAY_US 100u      /* after the stop command, before reading the result */
+#define SETTLING_DEFAULT_MS     1u      /* settling_time 0000 = 1 ms */
+#define MEAS_WAIT_MARGIN_DIV    4u      /* wait at least measuring time + 1/4 of it + settling */
 #define HALF_PI_F             1.57079632679490f
 
 /* ---- ZMEAS_CFG register (0x0C): field positions --------------------------
@@ -27,9 +29,9 @@
 #define CFG_SETTLING_POS        0u
 /* fixed field values (Zellhalter firmware) */
 #define CFG_MUX_SEL             0u      /* input multiplexer: default */
-#define CFG_MEAS_TIME_50MS      0x6u    /* 0b110 = 50 ms measuring time (register description
-                                         * p. 62; Table 9 lists the codes reversed). 50 ms is the
-                                         * condition of the accuracy specification. */
+#define CFG_MEAS_TIME_CODE_25MS 0x7u    /* measuring time code of 25 ms; the code counts down as
+                                         * the time doubles: 111 = 25 ms .. 000 = 3200 ms (register
+                                         * description p. 62; Table 9 lists the codes reversed) */
 #define CFG_SETTLING_NONE       0u      /* no extra settling time */
 
 /* ---- ZMEAS_MAG register (0x0E): |Z| = mantissa * 2^-(MAG_EXP_OFFSET + exponent) * R_shunt */
@@ -61,8 +63,9 @@ static const struct
 
 /* Waiting time after the start of a measurement, per frequency range
  * (based on the Infineon values of the Zellhalter firmware): index <= lastIndex
- * -> waitMs. Each value covers the 50 ms measuring time, which the TLE9010
- * extends to at least 3 excitation periods, plus the 1 ms default settling time.
+ * -> waitMs. Each value covers 3 excitation periods (the minimum the TLE9010
+ * extends a measurement to) and a measuring time of up to 50 ms, plus the 1 ms
+ * default settling time. Longer measuring times are covered by MeasWaitMs().
  * The Infineon values were made for 25 ms; only the first range (50 ms) was too
  * short for 50 ms and is now part of the 100 ms range. */
 static const struct
@@ -116,11 +119,21 @@ static uint32_t WaitTimeMs(uint8_t index)
     return waitTable[i].waitMs;
 }
 
+/* wait time per single measurement: frequency-dependent minimum (3 periods),
+ * extended to the set measuring time + margin */
+static uint32_t MeasWaitMs(uint8_t index)
+{
+    const uint32_t measMs  = (uint32_t)EIS_MEAS_TIME_MIN_MS << cfg.measTime;
+    const uint32_t minWait = measMs + measMs / MEAS_WAIT_MARGIN_DIV + SETTLING_DEFAULT_MS;
+    const uint32_t w       = WaitTimeMs(index);
+    return (w > minWait) ? w : minWait;
+}
+
 static uint16_t CfgRegister(uint8_t index)
 {
     return (uint16_t)((CFG_MUX_SEL                                         << CFG_MUX_SEL_POS)   |
                       ((uint32_t)(cfg.waveform & 1u)                      << CFG_WAVEFORM_POS)  |
-                      (CFG_MEAS_TIME_50MS                                 << CFG_MEAS_TIME_POS) |
+                      ((uint32_t)(CFG_MEAS_TIME_CODE_25MS - cfg.measTime) << CFG_MEAS_TIME_POS) |
                       ((uint32_t)(index / EIS_FREQ_STEPS_PER_OCTAVE)      << CFG_FREQ_DIV_POS)  |
                       ((uint32_t)(index % EIS_FREQ_STEPS_PER_OCTAVE)      << CFG_FREQ_FUND_POS) |
                       (CFG_SETTLING_NONE                                  << CFG_SETTLING_POS));
@@ -199,7 +212,8 @@ Eis_Result_t EIS_Start(const Eis_Config_t *c, uint8_t numEis)
     if (c->chip > EIS_CHIP_STACK || (c->chip == EIS_CHIP_STACK && numEis < BM_NUM_EIS_WITH_STACK) ||
         c->fStart >= EIS_NUM_FREQ || c->fStop >= EIS_NUM_FREQ || c->fStop < c->fStart ||
         c->amplitude >= EIS_AMPLITUDE_COUNT || c->waveform > EIS_WAVE_RECTANGLE ||
-        c->averages < EIS_AVERAGES_MIN || c->averages > EIS_AVERAGES_MAX)
+        c->averages < EIS_AVERAGES_MIN || c->averages > EIS_AVERAGES_MAX ||
+        c->measTime >= EIS_MEAS_TIME_COUNT)
         return EIS_ERR_CONFIG;
 
     cfg      = *c;
@@ -257,7 +271,7 @@ void EIS_Process(void)
         Tle_Write(node, TLE_REG_ZMEAS_AMP, amplitudeTable[cfg.amplitude].regCode);
         avg = 0u;
         sumRe = sumIm = 0.0f;
-        waitMs = WaitTimeMs(freq);
+        waitMs = MeasWaitMs(freq);
         state = ST_MEAS_START;
         break;
 

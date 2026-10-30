@@ -8,7 +8,7 @@
  * are those of the Zellhalter firmware (EIS_Messung / Sweep_Messung):
  *   wake-up, enumeration, sleep timer off -> per frequency: ZMEAS_CFG,
  *   ZMEAS_AMPLITUDE -> per average: start, wait (100 ms .. 4.5 s depending on the
- *   frequency), stop, read magnitude + phase, accumulate, 200 ms pause ->
+ *   frequency, longer if the measuring time requires it), stop, read magnitude + phase, accumulate, 200 ms pause ->
  *   chain back to sleep.
  * The sweep no longer blocks: EIS_Process() advances it from the main loop, so
  * the I2C slave, the console and the other measurements keep running.
@@ -44,6 +44,9 @@
 #define EIS_AMPLITUDE_COUNT   6u   /* amplitude index 0..5 = 50, 100, 200, 300, 400, 500 mA */
 #define EIS_AVERAGES_MIN      1u
 #define EIS_AVERAGES_MAX      9u
+#define EIS_MEAS_TIME_COUNT   8u   /* measuring time index 0..7 = 25, 50, 100, 200, 400, 800, 1600, 3200 ms */
+#define EIS_MEAS_TIME_MIN_MS  25u  /* index 0; every further index doubles the time */
+#define EIS_MEAS_TIME_DEFAULT 1u   /* 50 ms: condition of the datasheet accuracy specification */
 #define EIS_PROGRESS_IDLE     0xFFu  /* EIS_GetProgress() while no sweep runs */
 
 typedef enum
@@ -66,6 +69,9 @@ typedef struct
     uint8_t amplitude;   /* 0..EIS_AMPLITUDE_COUNT-1 = 50, 100, 200, 300, 400, 500 mA */
     uint8_t waveform;    /* Eis_Waveform_t */
     uint8_t averages;    /* EIS_AVERAGES_MIN..EIS_AVERAGES_MAX */
+    uint8_t measTime;    /* 0..EIS_MEAS_TIME_COUNT-1: measuring time per single measurement
+                          * EIS_MEAS_TIME_MIN_MS << measTime (the TLE9010 extends it to at
+                          * least 3 excitation periods at low frequencies) */
 } Eis_Config_t;
 
 typedef enum

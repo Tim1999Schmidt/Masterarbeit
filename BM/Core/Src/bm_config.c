@@ -6,6 +6,7 @@
  */
 #include "bm_config.h"
 #include <string.h>
+#include <stddef.h>
 
 #define CFG_PAGE          15u
 #define CFG_ADDR          (FLASH_BASE + CFG_PAGE * FLASH_PAGE_SIZE)   /* 0x08007800 */
@@ -13,41 +14,87 @@
  * this version; an erased page reads 0xFFFF and is therefore never taken as valid.
  * Increase it whenever the layout of CfgRecord_t changes, so that a record in
  * the old layout is not misread (the board then starts with the defaults). */
-#define CFG_RECORD_VERSION  1u
+#define CFG_RECORD_VERSION    2u
+#define CFG_RECORD_VERSION_V1 1u    /* old 8-byte layout without uCorrPpm: still read (migration) */
 
-/* Stored record: exactly one 64-bit double word (the flash programming unit). */
+/* Stored record: two 64-bit double words (the flash programming unit). */
 typedef struct
 {
-    uint16_t version;    /* CFG_RECORD_VERSION */
+    uint16_t version;     /* CFG_RECORD_VERSION */
     uint8_t  i2cAddr;
     uint8_t  numEis;
     int16_t  iZeroMv;
-    uint16_t check;      /* ~(sum of the 3 halfwords above) */
+    int16_t  uCorrPpm;
+    uint16_t reserved[3]; /* CFG_RESERVED_VALUE */
+    uint16_t check;       /* ~(sum of all halfwords above) */
 } CfgRecord_t;
 
-typedef char cfg_record_is_8_bytes[(sizeof(CfgRecord_t) == 8u) ? 1 : -1];
+/* record version 1 (firmware before the voltage correction) */
+typedef struct
+{
+    uint16_t version;     /* CFG_RECORD_VERSION_V1 */
+    uint8_t  i2cAddr;
+    uint8_t  numEis;
+    int16_t  iZeroMv;
+    uint16_t check;       /* ~(sum of the 3 halfwords above) */
+} CfgRecordV1_t;
+
+#define CFG_RESERVED_VALUE    0xFFFFu
+#define DOUBLE_WORD_BYTES     8u
+#define WORDS_PER_DOUBLE_WORD 2u
+#define CFG_WORDS             (sizeof(CfgRecord_t) / sizeof(uint32_t))
+#define CHECKED_HALFWORDS(T)  ((offsetof(T, check)) / sizeof(uint16_t))
+
+typedef char cfg_record_is_16_bytes[(sizeof(CfgRecord_t) == 2u * DOUBLE_WORD_BYTES) ? 1 : -1];
+typedef char cfg_record_v1_is_8_bytes[(sizeof(CfgRecordV1_t) == DOUBLE_WORD_BYTES) ? 1 : -1];
 
 static BmConfig_t cfg;
 
-static uint16_t Check(const CfgRecord_t *r)
+static uint16_t Check(const void *record, uint32_t halfwords)
 {
-    const uint16_t *h = (const uint16_t *)r;
-    return (uint16_t)~(uint16_t)(h[0] + h[1] + h[2]);
+    const uint16_t *h = (const uint16_t *)record;
+    uint16_t sum = 0u;
+    uint32_t i;
+    for (i = 0u; i < halfwords; i++)
+        sum = (uint16_t)(sum + h[i]);
+    return (uint16_t)~sum;
+}
+
+static uint8_t ValidBase(uint8_t i2cAddr, uint8_t numEis)
+{
+    return (i2cAddr >= BM_I2C_ADDR_MIN && i2cAddr <= BM_I2C_ADDR_MAX &&
+            (numEis == BM_NUM_EIS_CELL_ONLY || numEis == BM_NUM_EIS_WITH_STACK)) ? 1u : 0u;
+}
+
+static void TakeBase(uint8_t i2cAddr, uint8_t numEis, int16_t iZeroMv)
+{
+    cfg.i2cAddr = i2cAddr;
+    cfg.numEis  = numEis;
+    cfg.iZeroMv = (iZeroMv >= BM_I_ZERO_MIN_MV && iZeroMv <= BM_I_ZERO_MAX_MV)
+                  ? iZeroMv : BM_DEFAULT_I_ZERO_MV;
 }
 
 void BmConfig_Load(void)
 {
-    CfgRecord_t r;
-    memcpy(&r, (const void *)CFG_ADDR, sizeof(r));
+    CfgRecord_t   r;
+    CfgRecordV1_t r1;
+    memcpy(&r,  (const void *)CFG_ADDR, sizeof(r));
+    memcpy(&r1, (const void *)CFG_ADDR, sizeof(r1));
 
-    if (r.version == CFG_RECORD_VERSION && r.check == Check(&r) &&
-        r.i2cAddr >= BM_I2C_ADDR_MIN && r.i2cAddr <= BM_I2C_ADDR_MAX &&
-        (r.numEis == BM_NUM_EIS_CELL_ONLY || r.numEis == BM_NUM_EIS_WITH_STACK))
+    cfg.uCorrPpm = BM_DEFAULT_U_CORR_PPM;
+    if (r.version == CFG_RECORD_VERSION && r.check == Check(&r, CHECKED_HALFWORDS(CfgRecord_t)) &&
+        ValidBase(r.i2cAddr, r.numEis))
     {
-        cfg.i2cAddr = r.i2cAddr;
-        cfg.numEis  = r.numEis;
-        cfg.iZeroMv = (r.iZeroMv >= BM_I_ZERO_MIN_MV && r.iZeroMv <= BM_I_ZERO_MAX_MV)
-                      ? r.iZeroMv : BM_DEFAULT_I_ZERO_MV;
+        TakeBase(r.i2cAddr, r.numEis, r.iZeroMv);
+        if (r.uCorrPpm >= -BM_U_CORR_MAX_PPM && r.uCorrPpm <= BM_U_CORR_MAX_PPM)
+            cfg.uCorrPpm = r.uCorrPpm;
+    }
+    else if (r1.version == CFG_RECORD_VERSION_V1 && r1.check == Check(&r1, CHECKED_HALFWORDS(CfgRecordV1_t)) &&
+             ValidBase(r1.i2cAddr, r1.numEis))
+    {
+        /* old record: keep address, number of TLE9010 and current zero; the
+         * new layout is written with the next BmConfig_Save() */
+        TakeBase(r1.i2cAddr, r1.numEis, r1.iZeroMv);
     }
     else
     {
@@ -85,9 +132,10 @@ static uint8_t WaitReady(void)
     return ((FLASH->SR & FLASH_SR_ERRORS) == 0u) ? 1u : 0u;
 }
 
-static uint8_t ErasePageAndProgram(const uint32_t w[2])
+static uint8_t ErasePageAndProgram(const uint32_t *w, uint32_t words)
 {
     uint8_t ok;
+    uint32_t i;
 
     FLASH->KEYR = FLASH_KEY1;                    /* unlock sequence (RM0490, FLASH_KEYR) */
     FLASH->KEYR = FLASH_KEY2;
@@ -101,11 +149,12 @@ static uint8_t ErasePageAndProgram(const uint32_t w[2])
         ok = WaitReady();
         FLASH->CR &= ~FLASH_CR_PER;
     }
-    if (ok)
+    for (i = 0u; ok && i < words; i += WORDS_PER_DOUBLE_WORD)
     {
+        volatile uint32_t *dst = (volatile uint32_t *)CFG_ADDR + i;
         FLASH->CR |= FLASH_CR_PG;
-        *(volatile uint32_t *)CFG_ADDR        = w[0];   /* a double word: two word writes */
-        *(volatile uint32_t *)(CFG_ADDR + 4u) = w[1];
+        dst[0] = w[i];                                /* a double word: two word writes */
+        dst[1] = w[i + 1u];
         ok = WaitReady();
         FLASH->CR &= ~FLASH_CR_PG;
     }
@@ -117,20 +166,24 @@ static uint8_t ErasePageAndProgram(const uint32_t w[2])
 uint8_t BmConfig_Save(void)
 {
     CfgRecord_t r;
-    uint32_t w[2];
+    uint32_t w[CFG_WORDS];
+    uint32_t k;
 
-    r.version = CFG_RECORD_VERSION;
-    r.i2cAddr = cfg.i2cAddr;
-    r.numEis  = cfg.numEis;
-    r.iZeroMv = cfg.iZeroMv;
-    r.check   = Check(&r);
+    r.version  = CFG_RECORD_VERSION;
+    r.i2cAddr  = cfg.i2cAddr;
+    r.numEis   = cfg.numEis;
+    r.iZeroMv  = cfg.iZeroMv;
+    r.uCorrPpm = cfg.uCorrPpm;
+    for (k = 0u; k < sizeof(r.reserved) / sizeof(r.reserved[0]); k++)
+        r.reserved[k] = CFG_RESERVED_VALUE;
+    r.check    = Check(&r, CHECKED_HALFWORDS(CfgRecord_t));
 
     /* unchanged: do not erase/program the page again (flash endurance) */
     if (memcmp((const void *)CFG_ADDR, &r, sizeof(r)) == 0)
         return 1u;
 
     memcpy(w, &r, sizeof(w));
-    if (!ErasePageAndProgram(w))
+    if (!ErasePageAndProgram(w, CFG_WORDS))
         return 0u;
     return (memcmp((const void *)CFG_ADDR, &r, sizeof(r)) == 0) ? 1u : 0u;
 }

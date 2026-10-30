@@ -44,37 +44,40 @@ typedef struct __attribute__((packed))
     uint8_t  amplitude;   /* 0x07 RW */
     uint8_t  waveform;    /* 0x08 RW */
     uint8_t  averages;    /* 0x09 RW */
-    uint8_t  progress;    /* 0x0A RO */
-    uint8_t  numEis;      /* 0x0B RO */
-    uint16_t uCell;       /* 0x0C RO mV */
-    int16_t  iCell;       /* 0x0E RO mA */
-    int16_t  tTab;        /* 0x10 RO degC x100 */
-    uint16_t calLow;      /* 0x12 RO */
-    uint16_t calHigh;     /* 0x14 RO */
-    uint8_t  resIndex;    /* 0x16 RW */
-    uint8_t  resValid;    /* 0x17 RO */
-    uint32_t resFreq;     /* 0x18 RO 0.01 Hz */
-    int32_t  resRe;       /* 0x1C RO uOhm */
-    int32_t  resIm;       /* 0x20 RO uOhm */
+    uint8_t  measTime;    /* 0x0A RW */
+    uint8_t  progress;    /* 0x0B RO */
+    uint8_t  numEis;      /* 0x0C RO */
+    uint16_t uCell;       /* 0x0D RO mV */
+    int16_t  iCell;       /* 0x0F RO mA */
+    int16_t  tTab;        /* 0x11 RO degC x100 */
+    uint16_t calLow;      /* 0x13 RO */
+    uint16_t calHigh;     /* 0x15 RO */
+    uint8_t  resIndex;    /* 0x17 RW */
+    uint8_t  resValid;    /* 0x18 RO */
+    uint32_t resFreq;     /* 0x19 RO 0.01 Hz */
+    int32_t  resRe;       /* 0x1D RO uOhm */
+    int32_t  resIm;       /* 0x21 RO uOhm */
 } RegisterMap_t;
 
 #define REG_MAP_SIZE      ((uint8_t)sizeof(RegisterMap_t))
 #define OFF(field)        ((uint8_t)offsetof(RegisterMap_t, field))
 #define BIT(off)          (1ul << (off))
 
-/* writable registers: CONTROL, CONNECT_Z, EIS_CHIP..AVERAGES, RES_INDEX.
+/* writable registers: CONTROL, CONNECT_Z, EIS_CHIP..MEAS_TIME, RES_INDEX.
  * All writable offsets are < 32, so a 32-bit mask is enough. */
 #define WRITABLE_MASK     (BIT(OFF(control))  | BIT(OFF(connectZ)) | BIT(OFF(eisChip)) | \
                            BIT(OFF(fStart))   | BIT(OFF(fStop))    | BIT(OFF(amplitude)) | \
-                           BIT(OFF(waveform)) | BIT(OFF(averages)) | BIT(OFF(resIndex)))
+                           BIT(OFF(waveform)) | BIT(OFF(averages)) | BIT(OFF(measTime)) | \
+                           BIT(OFF(resIndex)))
 #define MASK_BITS         32u
 
 #define LAYOUT_CHECK(name, cond)  typedef char layout_check_##name[(cond) ? 1 : -1]
-LAYOUT_CHECK(map_size_is_36_bytes, sizeof(RegisterMap_t)             == 0x24u);
-LAYOUT_CHECK(u_cell_at_0x0C,       offsetof(RegisterMap_t, uCell)    == 0x0Cu);
-LAYOUT_CHECK(res_index_at_0x16,    offsetof(RegisterMap_t, resIndex) == 0x16u);
-LAYOUT_CHECK(res_freq_at_0x18,     offsetof(RegisterMap_t, resFreq)  == 0x18u);
-LAYOUT_CHECK(res_im_at_0x20,       offsetof(RegisterMap_t, resIm)    == 0x20u);
+LAYOUT_CHECK(map_size_is_37_bytes, sizeof(RegisterMap_t)             == 0x25u);
+LAYOUT_CHECK(meas_time_at_0x0A,    offsetof(RegisterMap_t, measTime) == 0x0Au);
+LAYOUT_CHECK(u_cell_at_0x0D,       offsetof(RegisterMap_t, uCell)    == 0x0Du);
+LAYOUT_CHECK(res_index_at_0x17,    offsetof(RegisterMap_t, resIndex) == 0x17u);
+LAYOUT_CHECK(res_freq_at_0x19,     offsetof(RegisterMap_t, resFreq)  == 0x19u);
+LAYOUT_CHECK(res_im_at_0x21,       offsetof(RegisterMap_t, resIm)    == 0x21u);
 LAYOUT_CHECK(writable_below_32,    offsetof(RegisterMap_t, resIndex) < MASK_BITS);
 
 #define CTRL_START        0x01u
@@ -150,6 +153,7 @@ void I2cComm_Init(void)
     memset(&regs, 0, sizeof(regs));
     regs.fStop     = EIS_FREQ_INDEX_MAX;
     regs.averages  = EIS_AVERAGES_MIN;
+    regs.measTime  = EIS_MEAS_TIME_DEFAULT;
     regs.progress  = EIS_PROGRESS_IDLE;
 
     I2cComm_SetAddress(BmConfig_Get()->i2cAddr);
@@ -200,7 +204,7 @@ void I2cComm_Update(void)
     __enable_irq();
 
     /* CONNECT_Z first, then commands (a write of both in one transaction
-     * starts the sweep with the new state). The EIS parameters 0x04..0x09 are
+     * starts the sweep with the new state). The EIS parameters 0x04..0x0A are
      * simply taken from the register map when a sweep is started. */
     if (doConnectZ)
     {
@@ -228,6 +232,7 @@ void I2cComm_Update(void)
             c.amplitude = snap.amplitude;
             c.waveform  = snap.waveform;
             c.averages  = snap.averages;
+            c.measTime  = snap.measTime;
             (void)App_StartEis(&c);
         }
         if (snap.control & CTRL_RECAL_TEMP)
