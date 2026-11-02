@@ -37,6 +37,8 @@ function MM_GUI()
     MAX_AVERAGES         = 9;
     DEFAULT_START_INDEX  = 0;
     DEFAULT_STOP_INDEX   = NUM_FREQ - 1;
+    MM_FIELD_NOADDR_BM   = 4;          % MM;busy;i2cErr;<BM auf 0x10>;<PM auf 0x20>
+    MM_FIELD_NOADDR_PM   = 5;
     DEFAULT_MEAS_TIME    = 2;          % 50 ms (Listeneintrag) = Bedingung der Datenblatt-Genauigkeit
     DEFAULT_AMPLITUDE    = 6;          % 500 mA (Listeneintrag); unter 200 mA misst der TLE9010 Re ~1.7 % zu hoch
     DEFAULT_TSET_DEGC    = 25;
@@ -104,6 +106,7 @@ function MM_GUI()
 
     %% ---- Zustand (von allen verschachtelten Funktionen geteilt) -------------
     device     = [];              % serialport-Objekt
+    noAddr     = [false false];   % BM / PM antwortet auf der Standardadresse 0x10 / 0x20
     statTimer  = [];
     cfg        = struct('bmAddr', {{}}, 'pmAddr', {{}}, 'pmSource', []);
     cellNames  = strings(1, 0);              % Zellnamen (in der Zellenuebersicht editierbar)
@@ -139,10 +142,10 @@ function MM_GUI()
     pGrid = uipanel(pBoards, 'BorderType', 'none', 'Units', 'normalized', 'Position', [0.005 0.10 0.99 0.895]);
     uicontrol(pBoards, 'Style', 'text', 'String', 'BM-Adr.:', 'Units', 'normalized', 'Position', [0.01 0.015 0.08 0.06], 'HorizontalAlignment', 'left');
     hBmAddr = uicontrol(pBoards, 'Style', 'edit', 'String', '', 'Units', 'normalized', 'Position', [0.09 0.015 0.17 0.07], ...
-        'TooltipString', 'z. B. 0x10, 0x11 (Reihenfolge = Zelle 1, Zelle 2, ...)');
+        'TooltipString', 'z. B. 0x11, 0x12 (Reihenfolge = Zelle 1, Zelle 2, ...; 0x10 = BM ohne vergebene Adresse)');
     uicontrol(pBoards, 'Style', 'text', 'String', 'PM-Adr.:', 'Units', 'normalized', 'Position', [0.27 0.015 0.08 0.06], 'HorizontalAlignment', 'left');
     hPmAddr = uicontrol(pBoards, 'Style', 'edit', 'String', '', 'Units', 'normalized', 'Position', [0.35 0.015 0.17 0.07], ...
-        'TooltipString', 'z. B. 0x20, 0x21 (Reihenfolge = Zelle 1, Zelle 2, ...)');
+        'TooltipString', 'z. B. 0x21, 0x22 (Reihenfolge = Zelle 1, Zelle 2, ...; 0x20 = PM ohne vergebene Adresse)');
     uicontrol(pBoards, 'Style', 'pushbutton', 'String', 'Liste übernehmen', 'Units', 'normalized', ...
         'Position', [0.53 0.01 0.16 0.08], 'Callback', @(~, ~) applyBoardList());
     uicontrol(pBoards, 'Style', 'pushbutton', 'String', 'Im MM speichern', 'Units', 'normalized', ...
@@ -339,6 +342,7 @@ function MM_GUI()
                 case "RES",      onEisResult(f);
                 case "EISEND",   onEisEnd(f);
                 case "EISDONE",  onEisDone(f);
+                case "WARN",     onWarning(f);
                 case "OK"
                     if f(2) ~= "STAT"          % zyklische Abfrage nicht protokollieren
                         logMsg(['<<< ' char(rxLine)]);
@@ -409,8 +413,27 @@ function MM_GUI()
         setGrid('ilim', k, sprintf('%.2f', str2double(f(12)) / MILLI));
     end
 
+    function onWarning(f)
+        % WARN;NOADDR;BM|PM;addr  - wird nur protokolliert; der Hinweisdialog kommt aus
+        % der STAT-Zeile des MM (onMmStatus), damit er auch nach dem Verbinden erscheint
+        logMsg(['<<< ' strjoin(cellstr(f), ';')]);
+    end
+
     function onMmStatus(f)
-        % MM;eisBusy;i2cErrors
+        % MM;eisBusy;i2cErrors;bmOnDefaultAddr;pmOnDefaultAddr
+        if numel(f) >= MM_FIELD_NOADDR_PM
+            nowNoAddr = [str2double(f(MM_FIELD_NOADDR_BM)), str2double(f(MM_FIELD_NOADDR_PM))] == 1;
+            types = {'BM', 'PM'};  defaults = {'0x10', '0x20'};  examples = {'0x11', '0x21'};
+            for k = find(nowNoAddr & ~noAddr)
+                msg = sprintf(['Ein %s antwortet auf der Standardadresse %s - ihm wurde noch keine Adresse ' ...
+                               'vergeben. Zuerst über die Konsole des Boards eine eigene Adresse setzen ' ...
+                               '(z. B. "addr %s"), erst dann kann es genutzt werden.'], ...
+                               types{k}, defaults{k}, examples{k});
+                logMsg(['Hinweis: ' msg]);
+                warndlg(msg, 'Board ohne Adresse');
+            end
+            noAddr = nowNoAddr;
+        end
         busy = str2double(f(2)) == 1;
         set(hStart, 'Enable', onOff(~busy));
         set(hAbort, 'Enable', onOff(busy));
