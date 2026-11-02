@@ -437,7 +437,7 @@ void HostComm_Process(void)
         const char c = (char)rxBuf[rxTail];
         rxTail = (uint16_t)((rxTail + 1u) & (RX_BUF_SIZE - 1u));
 
-        if (c == '\n')
+        if (c == '\n' || c == '\r')       /* CR, LF or CR/LF: the empty line in between is ignored */
         {
             line[lineLen] = '\0';
             if (lineOverflow)
@@ -447,9 +447,9 @@ void HostComm_Process(void)
             lineLen = 0u;
             lineOverflow = 0u;
         }
-        else if (c == '\r' || c == ' ')
+        else if (c == ' ')
         {
-            /* ignored (CR of CR/LF line ends, spaces around fields) */
+            /* ignored (spaces around fields) */
         }
         else if (lineLen < LINE_MAX)
             line[lineLen++] = c;
