@@ -26,11 +26,18 @@
 #define MM_I2C_ADDR_MIN       0x08u    /* 7-bit addresses 0x00..0x07 and 0x78..0x7F are reserved */
 #define MM_I2C_ADDR_MAX       0x77u
 
+/* Address of a BM / PM whose address was never set: the firmware default of
+ * the boards. It is not a valid board address - such a board must first get
+ * its own address over its debug console ("addr"). The MM watches these two
+ * addresses and reports a board found there (WARN;NOADDR, host_comm.h). */
+#define MM_UNASSIGNED_BM_ADDR 0x10u    /* BM_DEFAULT_I2C_ADDR of the BM firmware */
+#define MM_UNASSIGNED_PM_ADDR 0x20u    /* PM_DEFAULT_I2C_ADDR of the PM firmware */
+
 /* defaults for an unprogrammed MM: the current setup with 2 BMs and 2 PMs */
 #define MM_DEFAULT_NUM_BM     2u
 #define MM_DEFAULT_NUM_PM     2u
-#define MM_DEFAULT_BM_ADDR_FIRST  0x10u   /* BM 1 = 0x10, BM 2 = 0x11, ... (BM default 0x10) */
-#define MM_DEFAULT_PM_ADDR_FIRST  0x20u   /* PM 1 = 0x20, PM 2 = 0x21, ... (PM default 0x20) */
+#define MM_DEFAULT_BM_ADDR_FIRST  (MM_UNASSIGNED_BM_ADDR + 1u)   /* BM 1 = 0x11, BM 2 = 0x12, ... */
+#define MM_DEFAULT_PM_ADDR_FIRST  (MM_UNASSIGNED_PM_ADDR + 1u)   /* PM 1 = 0x21, PM 2 = 0x22, ... */
 
 /* temperature source of a PM: the onboard PT1000, or the tab sensor of BM k
  * (1..numBm) whose temperature the MM forwards to the PM (T_EXT) */
@@ -51,8 +58,8 @@ void MmConfig_Load(void);
 /* Current board list (RAM copy). */
 MmConfig_t *MmConfig_Get(void);
 
-/* Checks a list: counts in range, addresses valid and all different, PM
- * sources pointing at existing BMs. Returns 1 if valid. */
+/* Checks a list: counts in range, addresses valid, all different and none of
+ * the unassigned addresses, PM sources pointing at existing BMs. Returns 1 if valid. */
 uint8_t MmConfig_IsValid(const MmConfig_t *cfg);
 
 /* Writes the RAM copy to flash (skipped if unchanged). Returns 1 on success. */

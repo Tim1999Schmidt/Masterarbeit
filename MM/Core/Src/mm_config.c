@@ -76,7 +76,8 @@ uint8_t MmConfig_IsValid(const MmConfig_t *c)
     }
     for (i = 0u; i < n; i++)
     {
-        if (all[i] < MM_I2C_ADDR_MIN || all[i] > MM_I2C_ADDR_MAX)
+        if (all[i] < MM_I2C_ADDR_MIN || all[i] > MM_I2C_ADDR_MAX ||
+            all[i] == MM_UNASSIGNED_BM_ADDR || all[i] == MM_UNASSIGNED_PM_ADDR)
             return 0u;
         for (j = (uint8_t)(i + 1u); j < n; j++)
             if (all[i] == all[j])

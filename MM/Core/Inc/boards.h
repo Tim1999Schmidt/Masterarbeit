@@ -16,6 +16,9 @@
  * nothing is forwarded, the PM runs into its T_EXT timeout and stops with
  * error 5 (intended: no regulation on a stale temperature).
  *
+ * Boards without an assigned address: on every poll the MM also probes the
+ * two unassigned addresses (MM_UNASSIGNED_BM_ADDR / _PM_ADDR, mm_config.h).
+ *
  * Board numbers in this API are 0-based indices into the board list.
  ******************************************************************************
  */
@@ -68,6 +71,10 @@ const PmData_t *Boards_GetPm(uint8_t index);
 /* Reads the telemetry of one BM immediately (used by the EIS sequencer).
  * Returns 1 on success. */
 uint8_t Boards_RefreshBm(uint8_t index);
+
+/* 1 if a BM / PM answered on the unassigned address at the last poll. */
+uint8_t Boards_UnassignedBmPresent(void);
+uint8_t Boards_UnassignedPmPresent(void);
 
 /* ---- BM commands (return 1 if the I2C transfer succeeded) ---- */
 uint8_t Boards_BmControl(uint8_t index, uint8_t controlBits);           /* BM_CTRL_* */

@@ -21,7 +21,8 @@
  *                                    CFG;PM;<n>;<addr1>;...
  *                                    CFG;SRC;<src PM1>;...     (0 = PT1000, k = tab sensor of BM k)
  *                                    OK;CFG?
- *   CFGBM;<addr1>;<addr2>;...     set the BM list (1..8 addresses)
+ *   CFGBM;<addr1>;<addr2>;...     set the BM list (1..8 addresses; 0x10 / 0x20 are the
+ *                                 unassigned default addresses -> ERR;CFGBM;UNASSIGNED)
  *   CFGPM;<addr1>;...             set the PM list (0..8 addresses; sources reset to PT1000)
  *   PMSRC;<pm>;<0|bm>             temperature source of a PM
  *   SAVE                          write the board list to flash
@@ -31,7 +32,13 @@
  *   STAT  -> one line per board, then OK;STAT
  *     BM;<k>;<addr>;<online>;<status>;<err>;<u_mV>;<i_mA>;<t_tab_cdegC>;<numEis>;<progress>;<connectZ>
  *     PM;<k>;<addr>;<online>;<status>;<err>;<tset_cdegC>;<tact_cdegC>;<tpt_cdegC>;<i_mA>;<duty_permille>;<ilim_mA>;<src>
- *     MM;<eis busy>;<i2c error count>
+ *     MM;<eis busy>;<i2c error count>;<BM on 0x10>;<PM on 0x20>
+ *       (last two: 1 = a board without an assigned address answers there)
+ * ---- warnings (sent by the MM on its own) ------------------------------------
+ *   WARN;NOADDR;BM;0x10 / WARN;NOADDR;PM;0x20
+ *       a BM / PM answers on its unassigned default address: give it its own
+ *       address over its debug console ("addr") before it can be used.
+ *       Sent once when such a board appears.
  *     (status / err: register values of the board, see bm_regs.h / pm_regs.h;
  *      progress 255 = idle; cdegC = degC x100)
  * ---- PM (temperature control) --------------------------------------------

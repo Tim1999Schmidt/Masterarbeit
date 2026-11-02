@@ -17,6 +17,7 @@
 static BmData_t bm[MM_MAX_BM];
 static PmData_t pm[MM_MAX_PM];
 static uint32_t lastPollTick;
+static uint8_t  unassignedBm, unassignedPm;   /* a board answers on its unassigned address */
 
 /* ---- helpers --------------------------------------------------------------- */
 static uint8_t BmAddr(uint8_t i) { return MmConfig_Get()->bmAddr[i]; }
@@ -112,7 +113,12 @@ void Boards_Process(void)
         if (ReadPm(i))
             (void)ForwardSource(i);
     }
+    unassignedBm = I2cBus_Probe(MM_UNASSIGNED_BM_ADDR);
+    unassignedPm = I2cBus_Probe(MM_UNASSIGNED_PM_ADDR);
 }
+
+uint8_t Boards_UnassignedBmPresent(void) { return unassignedBm; }
+uint8_t Boards_UnassignedPmPresent(void) { return unassignedPm; }
 
 const BmData_t *Boards_GetBm(uint8_t index) { return &bm[index]; }
 const PmData_t *Boards_GetPm(uint8_t index) { return &pm[index]; }

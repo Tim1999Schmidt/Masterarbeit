@@ -197,6 +197,8 @@ static void CmdCfgList(const char *cmd, char **f, uint8_t n, uint8_t isBm)
     {
         if (a[i] < (int32_t)MM_I2C_ADDR_MIN || a[i] > (int32_t)MM_I2C_ADDR_MAX)
             { Err(cmd, "ADDR"); return; }
+        if (a[i] == (int32_t)MM_UNASSIGNED_BM_ADDR || a[i] == (int32_t)MM_UNASSIGNED_PM_ADDR)
+            { Err(cmd, "UNASSIGNED"); return; }         /* default address: no board may be used there */
         if (isBm) c.bmAddr[i] = (uint8_t)a[i];
         else      { c.pmAddr[i] = (uint8_t)a[i]; c.pmSource[i] = MM_PM_SOURCE_PT1000; }
     }
@@ -213,6 +215,22 @@ static void CmdCfgList(const char *cmd, char **f, uint8_t n, uint8_t isBm)
     *MmConfig_Get() = c;
     Boards_Init();                              /* old board states are meaningless now */
     Ok(cmd);
+}
+
+/* Reports a board that answers on an unassigned address once when it appears
+ * (WARN;NOADDR;BM|PM;<addr>); called every main loop iteration. */
+static void ReportUnassigned(void)
+{
+    static uint8_t reportedBm, reportedPm;
+    const uint8_t bm = Boards_UnassignedBmPresent();
+    const uint8_t pm = Boards_UnassignedPmPresent();
+
+    if (bm && !reportedBm)
+        (void)HostComm_SendLine("WARN;NOADDR;BM;0x%02X", MM_UNASSIGNED_BM_ADDR);
+    if (pm && !reportedPm)
+        (void)HostComm_SendLine("WARN;NOADDR;PM;0x%02X", MM_UNASSIGNED_PM_ADDR);
+    reportedBm = bm;
+    reportedPm = pm;
 }
 
 static void CmdScan(const char *cmd)
@@ -251,7 +269,8 @@ static void CmdStat(const char *cmd)
                                 p->tSetCenti, p->tActualCenti, p->tPt1000Centi, p->iActualMa,
                                 p->dutyMilli, p->iLimitMa, c->pmSource[i]);
     }
-    (void)HostComm_SendLine("MM;%u;%lu", EisSeq_IsBusy(), (unsigned long)I2cBus_GetErrorCount());
+    (void)HostComm_SendLine("MM;%u;%lu;%u;%u", EisSeq_IsBusy(), (unsigned long)I2cBus_GetErrorCount(),
+                            Boards_UnassignedBmPresent(), Boards_UnassignedPmPresent());
     Ok(cmd);
 }
 
@@ -432,6 +451,8 @@ void HostComm_Init(void)
 
 void HostComm_Process(void)
 {
+    ReportUnassigned();
+
     while (rxTail != rxHead)
     {
         const char c = (char)rxBuf[rxTail];

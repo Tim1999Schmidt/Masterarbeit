@@ -37,7 +37,8 @@
 #define BM_NUM_EIS_WITH_STACK 2u       /* cell + stack TLE9010 (first BM) */
 
 /* ---- defaults for an unprogrammed board ---- */
-#define BM_DEFAULT_I2C_ADDR   0x10u    /* BMs 0x10, 0x11, ...; PMs use 0x20 ... */
+#define BM_DEFAULT_I2C_ADDR   0x10u    /* = "no address assigned yet": the MM reports a BM here and
+                                        * does not use it; assign 0x11, 0x12, ... with "addr" */
 #define BM_DEFAULT_NUM_EIS    BM_NUM_EIS_CELL_ONLY
 #define BM_DEFAULT_I_ZERO_MV  1650     /* nominal current zero: REF1 = 1.65 V = VDD/2 */
 #define BM_I_ZERO_MIN_MV      1000     /* plausible range of a stored zero; outside -> default */
