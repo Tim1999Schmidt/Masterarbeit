@@ -28,6 +28,9 @@ extern UART_HandleTypeDef huart2;   /* initialised by MX_USART2_UART_Init() in m
 #define LINE_MAX            120u
 #define MAX_FIELDS           12u      /* command + arguments */
 #define FIELD_SEPARATOR      ';'
+#define ASCII_FIRST_PRINTABLE ' '    /* received characters outside ' '..'~' are ignored */
+#define ASCII_LAST_PRINTABLE  '~'
+#define ASCII_DEL             0x7F   /* backspace key of many terminals */
 #define LINE_END             "\r\n"
 #define LINE_END_LEN         2u
 #define FORMAT_BUF_SIZE     160u
@@ -478,9 +481,15 @@ void HostComm_Process(void)
             lineLen = 0u;
             lineOverflow = 0u;
         }
-        else if (c == ' ')
+        else if (c == '\b' || c == ASCII_DEL)
         {
-            /* ignored (spaces around fields) */
+            if (lineLen > 0u)
+                lineLen--;                      /* backspace: correction typed in a terminal */
+        }
+        else if (c == ' ' || c < ASCII_FIRST_PRINTABLE || c > ASCII_LAST_PRINTABLE)
+        {
+            /* ignored: spaces around fields, and control characters (e.g. 0x03
+             * sent by some terminals on Ctrl+C), which would corrupt the command */
         }
         else if (lineLen < LINE_MAX)
             line[lineLen++] = c;

@@ -4,7 +4,8 @@
  * @brief   Text protocol between the MATLAB GUI (PC) and the MM over USART2
  *          (ST-LINK virtual COM port of the Nucleo, 115200 baud, 8N1).
  *
- * Every line ends with CR, LF or CR/LF (terminal programs often send only CR). Fields are separated by ';'.
+ * Every line ends with CR, LF or CR/LF (terminal programs often send only CR);
+ * backspace deletes the last character, other control characters are ignored. Fields are separated by ';'.
  * Commands are not case sensitive. Numbers are decimal, addresses may also be
  * written as 0x.. hex. Board numbers start at 1 (order of the board list).
  *
