@@ -86,7 +86,7 @@ function MM_GUI()
 
     BM_ERROR_TEXT = {'kein Fehler', 'EIS-Parameter', 'beschaeftigt', 'EIS-Kommunikation', ...
                      'CONNECT_Z passt nicht', 'Tab-Temperatursensor', 'TLE9015 ERRQ', 'Flash', ...
-                     'EIS-ADC uebersteuert'};
+                     'EIS-ADC uebersteuert', 'Ueberstrom an der Rail (CONNECT_Z aus)'};
     PM_ERROR_TEXT = {'kein Fehler', 'Ueberstrom beim Start', 'Ueberstrom im Betrieb', ...
                      'Plausibilitaet (Regelung)', 'PT1000 unplausibel', 'externe Temperatur fehlt', ...
                      'kein Peltier angeschlossen', 'Temperaturkalibrierung'};
@@ -751,7 +751,7 @@ function MM_GUI()
     end
 
     function onEisEnd(f)
-        % EISEND;target;OK   |   EISEND;target;ERR;REASON[;BM_ERRn]
+        % EISEND;target;OK   |   EISEND;target;ERR;REASON[;BMk][;BM_ERRn]
         t = char(f(2));
         if f(3) == "OK"
             file = EIS_Textdatei_schreiben(meas(t), jobInfo, targetText(t));
@@ -761,9 +761,13 @@ function MM_GUI()
             if isKey(EIS_REASON_TEXT, reason)
                 reason = [reason ' - ' EIS_REASON_TEXT(reason)];
             end
-            if numel(f) >= 5
-                bmErr = str2double(extractAfter(f(5), "BM_ERR"));
-                reason = sprintf('%s (BM-Fehler %d: %s)', reason, bmErr, errorText(BM_ERROR_TEXT, bmErr));
+            for k = 5:numel(f)
+                if startsWith(f(k), "BM_ERR")
+                    bmErr = str2double(extractAfter(f(k), "BM_ERR"));
+                    reason = sprintf('%s (BM-Fehler %d: %s)', reason, bmErr, errorText(BM_ERROR_TEXT, bmErr));
+                elseif startsWith(f(k), "BM")
+                    reason = sprintf('%s, betrifft BM %s', reason, extractAfter(f(k), "BM"));
+                end
             end
             logMsg(sprintf('EIS %s fehlgeschlagen: %s', targetText(t), reason));
         end
