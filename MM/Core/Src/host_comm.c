@@ -269,8 +269,8 @@ static void CmdStat(const char *cmd)
                                 p->tSetCenti, p->tActualCenti, p->tPt1000Centi, p->iActualMa,
                                 p->dutyMilli, p->iLimitMa, c->pmSource[i]);
     }
-    (void)HostComm_SendLine("MM;%u;%lu;%u;%u", EisSeq_IsBusy(), (unsigned long)I2cBus_GetErrorCount(),
-                            Boards_UnassignedBmPresent(), Boards_UnassignedPmPresent());
+    (void)HostComm_SendLine("MM;%u;%lu;%u;%u;%u", EisSeq_IsBusy(), (unsigned long)I2cBus_GetErrorCount(),
+                            Boards_UnassignedBmPresent(), Boards_UnassignedPmPresent(), EisSeq_GetRailAuto());
     Ok(cmd);
 }
 
@@ -426,6 +426,16 @@ static void ProcessLine(char *s)
     else if (strcmp(cmd, "BMCLR") == 0 || strcmp(cmd, "BMRECAL") == 0 || strcmp(cmd, "BMIZERO") == 0)
         CmdBm(cmd, f, n);
     else if (strcmp(cmd, "EIS") == 0)        CmdEis(cmd, f, n);
+    else if (strcmp(cmd, "RAIL") == 0)
+    {
+        int32_t on;
+        if (n > FIRST_ARG)
+        {
+            if (!ParseInt(f[FIRST_ARG], &on) || (on != 0 && on != 1)) { Err(cmd, "PARAM"); return; }
+            EisSeq_SetRailAuto((uint8_t)on);
+        }
+        (void)HostComm_SendLine("OK;RAIL;%u", EisSeq_GetRailAuto());
+    }
     else if (strcmp(cmd, "ABORT") == 0)
     {
         EisSeq_Abort();

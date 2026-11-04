@@ -31,9 +31,12 @@
  *   0x02  ERROR_CODE   RO  uint8   0 none, 1 EIS config, 2 busy, 3 EIS communication,
  *                                  4 CONNECT_Z does not fit (cell: 0, stack: 1),
  *                                  5 temperature sensor, 6 TLE9015 ERRQ, 7 flash,
- *                                  8 TLE9010 ADC saturated (sweep stopped)
+ *                                  8 TLE9010 ADC saturated (sweep stopped),
+ *                                  9 overcurrent: cell current >= 2 A with CONNECT_Z on ->
+ *                                    CONNECT_Z switched off, = 1 refused until cleared
  *   0x03  CONNECT_Z    RW  uint8   0 = single cell, 1 = cell on the parallel rail (stack
  *                                  measurement). Only changed while no sweep runs.
+ *                                  Switched off by the BM itself at >= 2 A (error 9).
  *                                  The MM must check the cell voltages first!
  *   0x04  EIS_CHIP     RW  uint8   0 = cell TLE9010, 1 = stack TLE9010 (first BM only)
  *   0x05  F_START      RW  uint8   frequency index 0..51 (0 = 7812.5 Hz, 51 = 1.09 Hz)

@@ -73,6 +73,7 @@
 #define BM_ERR_ERRQ          6u
 #define BM_ERR_FLASH         7u
 #define BM_ERR_EIS_ADC_SAT   8u   /* TLE9010 ADC saturated, sweep stopped */
+#define BM_ERR_OVERCURRENT   9u   /* cell current >= 2 A with CONNECT_Z on: BM switched CONNECT_Z off */
 
 /* ---- value ranges ---- */
 #define BM_CONNECT_Z_OFF     0u

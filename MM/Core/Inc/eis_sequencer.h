@@ -7,17 +7,28 @@
  * Non-blocking state machine, advanced by EisSeq_Process() from the main
  * loop, so status requests from the GUI are still answered during a job.
  *
+ * No job running: all cells are connected in parallel on the rail (CONNECT_Z
+ * = 1 on every BM that is online, reports no overcurrent and whose cell
+ * voltage is within STACK_MAX_VOLTAGE_DIFF_MV of the others), so that small
+ * voltage differences equalise. A larger difference is reported once as
+ * WARN;UDIFF;<mV> and nothing is connected. Each BM also switches its own
+ * CONNECT_Z off at a cell current >= 2 A (BM error 9). Can be switched off
+ * with EisSeq_SetRailAuto(0) (host command RAIL;0): then all CONNECT_Z = 0.
+ *
  * Per target:
- *   cell k : CONNECT_Z = 0 on all BMs (checked) -> clear error on BM k ->
+ *   cell k : CONNECT_Z = 0 on all BMs (BMs that do not answer are skipped;
+ *            only BM k must confirm CONNECT_Z = 0) -> clear error on BM k ->
  *            write the parameters (EIS_CHIP = cell) -> START -> poll STATUS /
  *            PROGRESS until the sweep is done -> read all results -> next.
  *   stack  : read all BMs, all must be online and their cell voltages within
  *            STACK_MAX_VOLTAGE_DIFF_MV of each other (the cells are connected
  *            in parallel!) -> CONNECT_Z = 1 on all BMs (checked) -> sweep with
  *            the stack TLE9010 of the BM that has one (NUM_EIS = 2) ->
- *            results -> CONNECT_Z = 0 on all BMs (also after an error / abort).
+ *            results (the cells stay on the rail if the rail equalisation is on,
+ *            otherwise CONNECT_Z = 0 on all BMs, also after an error / abort).
  *
- * A failed target is reported (EISEND;<target>;ERR;<REASON>) and the job
+ * A failed target is reported (EISEND;<target>;ERR;<REASON>[;BM<k>][;BM_ERR<n>],
+ * BM<k> = the BM the error refers to, BM_ERR<n> = its error code) and the job
  * continues with the next target. Reasons:
  *   OFFLINE    BM does not answer                 UDIFF     voltage difference too high (stack)
  *   NOSTACK    no BM with a stack chip            CONNECTZ  CONNECT_Z did not switch
@@ -70,5 +81,9 @@ void EisSeq_Process(void);
 EisSeqResult_t EisSeq_Start(const EisJob_t *job);
 void           EisSeq_Abort(void);
 uint8_t        EisSeq_IsBusy(void);
+
+/* Rail equalisation while no job runs (default on). Off: CONNECT_Z = 0 on all BMs. */
+void           EisSeq_SetRailAuto(uint8_t on);
+uint8_t        EisSeq_GetRailAuto(void);
 
 #endif /* EIS_SEQUENCER_H */

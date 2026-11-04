@@ -34,8 +34,17 @@ typedef enum
     APP_ERR_TEMP_SENSOR   = 5,  /* tab temperature: PT1000 implausible / calibration failed */
     APP_ERR_ERRQ          = 6,  /* TLE9015 ERRQ latched (emergency signal / external error) */
     APP_ERR_FLASH         = 7,  /* saving the board settings failed */
-    APP_ERR_EIS_ADC_SAT   = 8   /* TLE9010 ADC saturated, result invalid (sweep stopped) */
+    APP_ERR_EIS_ADC_SAT   = 8,  /* TLE9010 ADC saturated, result invalid (sweep stopped) */
+    APP_ERR_OVERCURRENT   = 9   /* cell current >= APP_RAIL_CURRENT_MAX_MA with CONNECT_Z on:
+                                 * CONNECT_Z switched off; CONNECT_Z = 1 refused until cleared */
 } App_Error_t;
+
+/* Protection of the rail connection: if the cell current (hall sensor) reaches
+ * this value or the current path saturates while CONNECT_Z is on (cells in
+ * parallel, e.g. equalising current after connecting cells with different
+ * voltages), CONNECT_Z is switched off at once (checked every 100 ms with each
+ * new current reading) and APP_ERR_OVERCURRENT is latched. */
+#define APP_RAIL_CURRENT_MAX_MA  2000
 
 /* STATUS bits (same for I2C and the console) */
 #define APP_ST_EIS_BUSY       0x01u

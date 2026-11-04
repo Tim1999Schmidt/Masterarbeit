@@ -32,9 +32,13 @@
  *   STAT  -> one line per board, then OK;STAT
  *     BM;<k>;<addr>;<online>;<status>;<err>;<u_mV>;<i_mA>;<t_tab_cdegC>;<numEis>;<progress>;<connectZ>
  *     PM;<k>;<addr>;<online>;<status>;<err>;<tset_cdegC>;<tact_cdegC>;<tpt_cdegC>;<i_mA>;<duty_permille>;<ilim_mA>;<src>
- *     MM;<eis busy>;<i2c error count>;<BM on 0x10>;<PM on 0x20>
- *       (last two: 1 = a board without an assigned address answers there)
+ *     MM;<eis busy>;<i2c error count>;<BM on 0x10>;<PM on 0x20>;<rail>
+ *       (BM/PM on 0x10/0x20: 1 = a board without an assigned address answers
+ *        there; rail: 1 = rail equalisation on, see RAIL)
  * ---- warnings (sent by the MM on its own) ------------------------------------
+ *   WARN;UDIFF;<mV>
+ *       rail equalisation: the cell voltages differ by more than 50 mV, the
+ *       cells are not connected in parallel (sent once until the difference is ok)
  *   WARN;NOADDR;BM;0x10 / WARN;NOADDR;PM;0x20
  *       a BM / PM answers on its unassigned default address: give it its own
  *       address over its debug console ("addr") before it can be used.
@@ -58,12 +62,15 @@
  *       fstart/fstop 0..51, amp 0..5, wave 0/1, avg 1..9, time 0..7 = measuring
  *       time 25, 50, 100 .. 3200 ms (optional, default 1 = 50 ms) (as on the BM)
  *   ABORT
+ *   RAIL[;0|1]                    rail equalisation while no EIS job runs (default 1):
+ *                                 all cells in parallel (CONNECT_Z = 1) if their voltages
+ *                                 differ by <= 50 mV; 0 = all CONNECT_Z = 0. -> OK;RAIL;<state>
  *   Lines of a running job (see eis_sequencer.h):
  *     EISBEGIN;<target>;<fstart>;<fstop>;<amp>;<wave>;<avg>;<time>
  *     EISCELL;<target>;<bm>;<u_mV>;<t_tab_cdegC>      cell(s) involved
  *     PROG;<target>;<frequency index>
  *     RES;<target>;<index>;<f_cHz>;<re_uOhm>;<im_uOhm>
- *     EISEND;<target>;OK  |  EISEND;<target>;ERR;<REASON>
+ *     EISEND;<target>;OK  |  EISEND;<target>;ERR;<REASON>[;BM<k>][;BM_ERR<n>]
  *     EISDONE;<targets ok>;<targets total>
  ******************************************************************************
  */

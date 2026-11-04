@@ -17,6 +17,18 @@ void App_Process(void)
 {
     const uint8_t busy = EIS_IsBusy();
 
+    /* rail protection (see APP_RAIL_CURRENT_MAX_MA) */
+    if (BmIo_GetConnectZ())
+    {
+        const int32_t i = CellMeas_GetCurrentMa();
+        if (i >= APP_RAIL_CURRENT_MAX_MA || i <= -APP_RAIL_CURRENT_MAX_MA || CellMeas_IsCurrentSaturated())
+        {
+            BmIo_SetConnectZ(0u);
+            EIS_Abort();                       /* a stack sweep cannot go on without the rail */
+            latchedError = APP_ERR_OVERCURRENT;
+        }
+    }
+
     /* a sweep that ended with a communication or saturation error latches the error */
     if (wasBusy && !busy)
     {
@@ -59,6 +71,8 @@ App_Error_t App_SetConnectZ(uint8_t on)
     on = on ? 1u : 0u;
     if (on == BmIo_GetConnectZ())
         return APP_ERR_NONE;
+    if (on && latchedError == APP_ERR_OVERCURRENT)
+        return APP_ERR_OVERCURRENT;            /* stays off until the error is cleared */
     if (EIS_IsBusy())
     {
         latchedError = APP_ERR_BUSY;

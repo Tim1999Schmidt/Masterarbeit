@@ -9,6 +9,7 @@
 #include "bm_regs.h"
 #include "host_comm.h"
 #include "mm_config.h"
+#include <stdio.h>
 
 #define CONNECT_SETTLE_MS        100u     /* CONNECT_Z switched -> check its state */
 #define START_CHECK_DELAY_MS     100u     /* START sent -> BM must report "busy" */
@@ -21,6 +22,9 @@
 #define STACK_TARGET              0xFFu   /* target list entry: the stack */
 #define NO_BM                     0xFFu
 #define RES_LINE_TX_RESERVE       64u     /* free TX bytes needed before the next RES line */
+#define RAIL_CHECK_PERIOD_MS    1000u     /* no job: how often the rail connection is checked */
+#define RAIL_MIN_CELLS             2u     /* fewer cells: nothing to equalise */
+#define END_LINE_LEN              64u     /* "EISEND;C8;ERR;CONNECTZ;BM8;BM_ERR9" */
 
 typedef char target_name_has_one_digit[(MM_MAX_BM <= 9u) ? 1 : -1];
 
@@ -46,6 +50,9 @@ static char       name[TARGET_NAME_LEN];
 static uint32_t   tick, lastProgressTick;
 static uint8_t    lastProgress, pollFails, readIndex, readRetries;
 static uint8_t    abortRequest;
+static uint8_t    railAuto = 1u;             /* no job: cells in parallel on the rail */
+static uint8_t    railUdiffReported;
+static uint32_t   railTick;
 
 /* ---- helpers --------------------------------------------------------------- */
 static uint8_t NumBm(void) { return MmConfig_Get()->numBm; }
@@ -78,28 +85,88 @@ static void SetName(uint8_t target)
     }
 }
 
-/* CONNECT_Z of all BMs on/off; returns 1 if every write was acknowledged */
+/* CONNECT_Z of all BMs on/off; returns NO_BM if every write was acknowledged,
+ * otherwise the index of the first BM that did not answer */
 static uint8_t ConnectAll(uint8_t on)
 {
-    uint8_t i, ok = 1u;
+    uint8_t i, failed = NO_BM;
     for (i = 0u; i < NumBm(); i++)
-        if (!Boards_BmSetConnectZ(i, on))
-            ok = 0u;
-    return ok;
+        if (!Boards_BmSetConnectZ(i, on) && failed == NO_BM)
+            failed = i;
+    return failed;
 }
 
-/* reads all BMs and checks that CONNECT_Z is in the wanted state everywhere */
+/* reads BM i and checks that CONNECT_Z is in the wanted state */
+static uint8_t CheckConnect(uint8_t i, uint8_t on)
+{
+    if (!Boards_RefreshBm(i))
+        return 0u;
+    return (((Boards_GetBm(i)->status & BM_ST_CONNECT_Z) != 0u) == (on != 0u)) ? 1u : 0u;
+}
+
+/* checks all BMs; returns NO_BM if CONNECT_Z is in the wanted state everywhere,
+ * otherwise the index of the first BM that is offline or in the wrong state */
 static uint8_t CheckConnectAll(uint8_t on)
 {
     uint8_t i;
     for (i = 0u; i < NumBm(); i++)
+        if (!CheckConnect(i, on))
+            return i;
+    return NO_BM;
+}
+
+/* reason for a failed CONNECT_Z check of BM i */
+static const char *ConnectFailReason(uint8_t i)
+{
+    return Boards_GetBm(i)->online ? "CONNECTZ" : "OFFLINE";
+}
+
+/* BM takes part in the rail equalisation: answers, no overcurrent, no sweep */
+static uint8_t RailCandidate(const BmData_t *b)
+{
+    return (b->online && b->errorCode != BM_ERR_OVERCURRENT && (b->status & BM_ST_EIS_BUSY) == 0u) ? 1u : 0u;
+}
+
+/* No EIS job: all cells in parallel on the rail, so that small voltage
+ * differences equalise. Only BMs that are online and report no overcurrent
+ * take part, and only if their cell voltages are within
+ * STACK_MAX_VOLTAGE_DIFF_MV of each other - connecting cells with a larger
+ * difference would drive a high equalising current (each BM also switches
+ * its CONNECT_Z off by itself at >= 2 A, see BM bm_app.c). */
+static void RailIdle(void)
+{
+    uint16_t uMin = UINT16_MAX, uMax = 0u;
+    uint8_t i, n = 0u;
+
+    if (!railAuto || (HAL_GetTick() - railTick) < RAIL_CHECK_PERIOD_MS)
+        return;
+    railTick = HAL_GetTick();
+
+    for (i = 0u; i < NumBm(); i++)
     {
-        if (!Boards_RefreshBm(i))
-            return 0u;
-        if (((Boards_GetBm(i)->status & BM_ST_CONNECT_Z) != 0u) != (on != 0u))
-            return 0u;
+        const BmData_t *b = Boards_GetBm(i);
+        if (!RailCandidate(b))
+            continue;
+        if (b->uCellMv < uMin) uMin = b->uCellMv;
+        if (b->uCellMv > uMax) uMax = b->uCellMv;
+        n++;
     }
-    return 1u;
+    if (n < RAIL_MIN_CELLS)
+        return;
+    if ((int32_t)(uMax - uMin) > STACK_MAX_VOLTAGE_DIFF_MV)
+    {
+        if (!railUdiffReported)
+            (void)HostComm_SendLine("WARN;UDIFF;%u", (unsigned)(uMax - uMin));
+        railUdiffReported = 1u;
+        return;                                    /* do not connect: equalising current too high */
+    }
+    railUdiffReported = 0u;
+    for (i = 0u; i < NumBm(); i++)
+    {
+        const BmData_t *b = Boards_GetBm(i);
+        if (RailCandidate(b) && (b->status & BM_ST_CONNECT_Z) == 0u)
+            (void)Boards_BmSetConnectZ(i, BM_CONNECT_Z_ON);
+    }
 }
 
 static void ReportCell(uint8_t bmIndex)
@@ -109,20 +176,28 @@ static void ReportCell(uint8_t bmIndex)
                             (unsigned)b->uCellMv, (int)b->tTabCenti);
 }
 
-static void EndTarget(const char *errorReason, int errorDetail)
+/* errorReason 0 = success; bm = BM index the error refers to (NO_BM: none);
+ * errorDetail = error code reported by that BM (0: none) */
+static void EndTarget(const char *errorReason, uint8_t bm, int errorDetail)
 {
-    if (isStack)
-        (void)ConnectAll(BM_CONNECT_Z_OFF);           /* never leave the cells in parallel */
+    if (isStack && !railAuto)
+        (void)ConnectAll(BM_CONNECT_Z_OFF);           /* rail equalisation off: do not leave the cells in parallel */
 
     if (errorReason == 0)
     {
         targetsOk++;
         (void)HostComm_SendLine("EISEND;%s;OK", name);
     }
-    else if (errorDetail != 0)
-        (void)HostComm_SendLine("EISEND;%s;ERR;%s;BM_ERR%d", name, errorReason, errorDetail);
     else
-        (void)HostComm_SendLine("EISEND;%s;ERR;%s", name, errorReason);
+    {
+        char line[END_LINE_LEN];
+        int n = snprintf(line, sizeof(line), "EISEND;%s;ERR;%s", name, errorReason);
+        if (bm != NO_BM && n > 0 && n < (int)sizeof(line))
+            n += snprintf(&line[n], sizeof(line) - (uint32_t)n, ";BM%u", (unsigned)(bm + 1u));
+        if (errorDetail != 0 && n > 0 && n < (int)sizeof(line))
+            (void)snprintf(&line[n], sizeof(line) - (uint32_t)n, ";BM_ERR%d", errorDetail);
+        (void)HostComm_SendLine("%s", line);
+    }
 
     targetPos++;
     state = ST_NEXT_TARGET;
@@ -132,7 +207,7 @@ static void FailTarget(const char *reason)
 {
     if (measBm != NO_BM)
         (void)Boards_BmControl(measBm, BM_CTRL_ABORT);
-    EndTarget(reason, 0);
+    EndTarget(reason, measBm, 0);
 }
 
 /* sets up the next target; returns 0 when the list is done */
@@ -151,17 +226,14 @@ static uint8_t BeginTarget(void)
 
     if (!isStack)
     {
-        const uint8_t k = targets[targetPos];
-        /* a cell is measured alone: no BM may connect its cell to the rail */
+        /* a cell is measured alone: CONNECT_Z off on all BMs (BMs that do not
+         * answer are skipped); only the measured BM must confirm it (checked
+         * in ST_CONNECT_SETTLE) */
+        measBm = targets[targetPos];
         (void)ConnectAll(BM_CONNECT_Z_OFF);
-        if (!CheckConnectAll(BM_CONNECT_Z_OFF))
-        {
-            EndTarget(Boards_GetBm(k)->online ? "CONNECTZ" : "OFFLINE", 0);
-            return 1u;
-        }
-        ReportCell(k);
-        measBm = k;
-        state  = ST_START;
+        ReportCell(measBm);
+        tick  = HAL_GetTick();
+        state = ST_CONNECT_SETTLE;
         return 1u;
     }
 
@@ -173,7 +245,7 @@ static uint8_t BeginTarget(void)
             const BmData_t *b;
             if (!Boards_RefreshBm(i))
             {
-                EndTarget("OFFLINE", 0);
+                EndTarget("OFFLINE", i, 0);
                 return 1u;
             }
             b = Boards_GetBm(i);
@@ -183,19 +255,20 @@ static uint8_t BeginTarget(void)
         }
         if ((int32_t)(uMax - uMin) > STACK_MAX_VOLTAGE_DIFF_MV)
         {
-            EndTarget("UDIFF", 0);
+            EndTarget("UDIFF", NO_BM, 0);
             return 1u;
         }
     }
     measBm = FindStackBm();
     if (measBm == NO_BM)
     {
-        EndTarget("NOSTACK", 0);
+        EndTarget("NOSTACK", NO_BM, 0);
         return 1u;
     }
-    if (!ConnectAll(BM_CONNECT_Z_ON))
+    i = ConnectAll(BM_CONNECT_Z_ON);
+    if (i != NO_BM)
     {
-        EndTarget("CONNECTZ", 0);
+        EndTarget("OFFLINE", i, 0);
         return 1u;
     }
     tick  = HAL_GetTick();
@@ -252,10 +325,23 @@ void EisSeq_Abort(void)
         abortRequest = 1u;
 }
 
+void EisSeq_SetRailAuto(uint8_t on)
+{
+    railAuto = on ? 1u : 0u;
+    railTick = HAL_GetTick() - RAIL_CHECK_PERIOD_MS;   /* check at once */
+    if (!railAuto && state == ST_IDLE)
+        (void)ConnectAll(BM_CONNECT_Z_OFF);
+}
+
+uint8_t EisSeq_GetRailAuto(void) { return railAuto; }
+
 void EisSeq_Process(void)
 {
     if (state == ST_IDLE)
+    {
+        RailIdle();
         return;
+    }
 
     if (abortRequest)
     {
@@ -270,22 +356,31 @@ void EisSeq_Process(void)
     case ST_NEXT_TARGET:
         if (!BeginTarget())
         {
-            (void)ConnectAll(BM_CONNECT_Z_OFF);
+            if (!railAuto)
+                (void)ConnectAll(BM_CONNECT_Z_OFF);
             (void)HostComm_SendLine("EISDONE;%u;%u", targetsOk, numTargets);
+            railTick = HAL_GetTick() - RAIL_CHECK_PERIOD_MS;   /* reconnect the rail at once */
             state = ST_IDLE;
         }
         break;
 
     case ST_CONNECT_SETTLE:
+    {
+        uint8_t failed;
         if ((HAL_GetTick() - tick) < CONNECT_SETTLE_MS)
             break;
-        if (!CheckConnectAll(BM_CONNECT_Z_ON))
+        if (isStack)
+            failed = CheckConnectAll(BM_CONNECT_Z_ON);     /* stack: every cell on the rail */
+        else
+            failed = CheckConnect(measBm, BM_CONNECT_Z_OFF) ? NO_BM : measBm;
+        if (failed != NO_BM)
         {
-            EndTarget("CONNECTZ", 0);
+            EndTarget(ConnectFailReason(failed), failed, 0);
             break;
         }
         state = ST_START;
         break;
+    }
 
     case ST_START:
     {
@@ -298,7 +393,7 @@ void EisSeq_Process(void)
             !Boards_BmWriteEisParams(measBm, params) ||
             !Boards_BmControl(measBm, BM_CTRL_START))
         {
-            EndTarget("OFFLINE", 0);
+            EndTarget("OFFLINE", measBm, 0);
             break;
         }
         tick  = HAL_GetTick();
@@ -316,7 +411,7 @@ void EisSeq_Process(void)
         }
         if ((Boards_GetBm(measBm)->status & BM_ST_EIS_BUSY) == 0u)
         {
-            EndTarget("START", Boards_GetBm(measBm)->errorCode);
+            EndTarget("START", measBm, Boards_GetBm(measBm)->errorCode);
             break;
         }
         lastProgress     = BM_PROGRESS_IDLE;
@@ -355,7 +450,7 @@ void EisSeq_Process(void)
         }
         if ((b->status & BM_ST_RESULTS) == 0u)
         {
-            EndTarget("SWEEP", b->errorCode);
+            EndTarget("SWEEP", measBm, b->errorCode);
             break;
         }
         readIndex   = job.fStart;
@@ -383,12 +478,12 @@ void EisSeq_Process(void)
                 readIndex++;
         }
         else if (++readRetries >= READ_RETRIES)
-            EndTarget("READ", 0);
+            EndTarget("READ", measBm, 0);
         break;
     }
 
     case ST_FINISH:
-        EndTarget(0, 0);
+        EndTarget(0, NO_BM, 0);
         break;
 
     default:
