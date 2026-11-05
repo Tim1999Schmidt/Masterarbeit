@@ -20,10 +20,12 @@
  *            only BM k must confirm CONNECT_Z = 0) -> clear error on BM k ->
  *            write the parameters (EIS_CHIP = cell) -> START -> poll STATUS /
  *            PROGRESS until the sweep is done -> read all results -> next.
- *   stack  : read all BMs, all must be online and their cell voltages within
- *            STACK_MAX_VOLTAGE_DIFF_MV of each other (the cells are connected
- *            in parallel!) -> CONNECT_Z = 1 on all BMs (checked) -> sweep with
- *            the stack TLE9010 of the BM that has one (NUM_EIS = 2) ->
+ *   stack  : read all BMs, all must be online; the cells selected in stackMask
+ *            must be within STACK_MAX_VOLTAGE_DIFF_MV of each other (they are
+ *            connected in parallel!) -> CONNECT_Z = 1 on the selected BMs,
+ *            CONNECT_Z = 0 on the others (both checked) -> sweep with the stack
+ *            TLE9010 of the BM that has one (NUM_EIS = 2; its own cell may be
+ *            deselected, the chip is supplied from the rail) ->
  *            results (the cells stay on the rail if the rail equalisation is on,
  *            otherwise CONNECT_Z = 0 on all BMs, also after an error / abort).
  *
@@ -65,7 +67,10 @@ typedef struct
     uint8_t waveform;
     uint8_t averages;
     uint8_t measTime;          /* 0..BM_MEAS_TIME_COUNT-1 = 25 .. 3200 ms */
+    uint8_t stackMask;         /* stack: cells on the rail, bit k-1 = BM k (EIS_STACK_ALL = all) */
 } EisJob_t;
+
+#define EIS_STACK_ALL   0xFFu  /* stackMask: every BM of the board list */
 
 typedef enum
 {

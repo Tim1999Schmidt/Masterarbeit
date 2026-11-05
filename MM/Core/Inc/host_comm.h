@@ -57,17 +57,20 @@
  *                                 temperature / current zero, RAM only)
  *   (<bm> = 0 means all BMs; not while an EIS job runs)
  * ---- EIS --------------------------------------------------------------------
- *   EIS;<target>;<fstart>;<fstop>;<amp>;<wave>;<avg>[;<time>]
+ *   EIS;<target>;<fstart>;<fstop>;<amp>;<wave>;<avg>[;<time>[;<stack>]]
  *       target: C<k> = cell of BM k, S = stack, ALL = all cells one after
  *       another, ALLS = all cells and then the stack
  *       fstart/fstop 0..51, amp 0..5, wave 0/1, avg 1..9, time 0..7 = measuring
- *       time 25, 50, 100 .. 3200 ms (optional, default 1 = 50 ms) (as on the BM)
+ *       time 25, 50, 100 .. 3200 ms (optional, default 1 = 50 ms) (as on the BM),
+ *       stack = cells on the rail for the stack measurement (S / ALLS) as bit mask,
+ *       bit 0 = BM 1 ... (decimal or 0x hex, optional, default all; e.g. 0x5 = BM 1 + 3);
+ *       the other BMs get CONNECT_Z = 0 during the stack sweep
  *   ABORT
  *   RAIL[;0|1]                    rail equalisation while no EIS job runs (default 1):
  *                                 all cells in parallel (CONNECT_Z = 1) if their voltages
  *                                 differ by <= 50 mV; 0 = all CONNECT_Z = 0. -> OK;RAIL;<state>
  *   Lines of a running job (see eis_sequencer.h):
- *     EISBEGIN;<target>;<fstart>;<fstop>;<amp>;<wave>;<avg>;<time>
+ *     EISBEGIN;<target>;<fstart>;<fstop>;<amp>;<wave>;<avg>;<time>;<stack mask>
  *     EISCELL;<target>;<bm>;<u_mV>;<t_tab_cdegC>      cell(s) involved
  *     PROG;<target>;<frequency index>
  *     RES;<target>;<index>;<f_cHz>;<re_uOhm>;<im_uOhm>

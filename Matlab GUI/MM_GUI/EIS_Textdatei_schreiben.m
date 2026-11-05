@@ -48,6 +48,9 @@ function fullFilePath = EIS_Textdatei_schreiben(m, jobInfo, targetLabel)
                     k, m.pm(k).tSet, m.pm(k).tAct, m.pm(k).tPt);
         end
     end
+    if strcmp(m.target, 'S') && isfield(s, 'stackCells')
+        fprintf(fid, '# Stack: an der Rail verbunden (CONNECT_Z = 1): Zelle %s\n', s.stackCells);
+    end
     fprintf(fid, '# \n');
     fprintf(fid, '# %-15s %-15s %-12s %-12s %-12s %-12s\n', 'Start_Index:', 'Stopp_Index:', 'Amplitude:', ...
             'Signalform:', 'Mittelung:', 'Messdauer:');

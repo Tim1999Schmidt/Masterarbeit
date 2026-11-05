@@ -104,13 +104,35 @@ static uint8_t CheckConnect(uint8_t i, uint8_t on)
     return (((Boards_GetBm(i)->status & BM_ST_CONNECT_Z) != 0u) == (on != 0u)) ? 1u : 0u;
 }
 
-/* checks all BMs; returns NO_BM if CONNECT_Z is in the wanted state everywhere,
- * otherwise the index of the first BM that is offline or in the wrong state */
-static uint8_t CheckConnectAll(uint8_t on)
+/* stack: cell of BM i is selected for the rail */
+static uint8_t InStack(uint8_t i)
+{
+    return ((job.stackMask >> i) & 1u) ? 1u : 0u;
+}
+
+/* bits of all BMs in the board list */
+static uint8_t AllBmMask(void)
+{
+    return (uint8_t)((1u << NumBm()) - 1u);
+}
+
+/* stack: CONNECT_Z = 1 on the selected, 0 on the other BMs; returns NO_BM or
+ * the index of the first BM that did not answer */
+static uint8_t ConnectStack(void)
+{
+    uint8_t i, failed = NO_BM;
+    for (i = 0u; i < NumBm(); i++)
+        if (!Boards_BmSetConnectZ(i, InStack(i) ? BM_CONNECT_Z_ON : BM_CONNECT_Z_OFF) && failed == NO_BM)
+            failed = i;
+    return failed;
+}
+
+/* stack: checks CONNECT_Z of all BMs against the selection; NO_BM if ok */
+static uint8_t CheckConnectStack(void)
 {
     uint8_t i;
     for (i = 0u; i < NumBm(); i++)
-        if (!CheckConnect(i, on))
+        if (!CheckConnect(i, InStack(i) ? BM_CONNECT_Z_ON : BM_CONNECT_Z_OFF))
             return i;
     return NO_BM;
 }
@@ -221,8 +243,8 @@ static uint8_t BeginTarget(void)
     isStack = (targets[targetPos] == STACK_TARGET) ? 1u : 0u;
     measBm  = NO_BM;
     SetName(targets[targetPos]);
-    (void)HostComm_SendLine("EISBEGIN;%s;%u;%u;%u;%u;%u;%u", name, job.fStart, job.fStop,
-                            job.amplitude, job.waveform, job.averages, job.measTime);
+    (void)HostComm_SendLine("EISBEGIN;%s;%u;%u;%u;%u;%u;%u;%u", name, job.fStart, job.fStop,
+                            job.amplitude, job.waveform, job.averages, job.measTime, job.stackMask);
 
     if (!isStack)
     {
@@ -237,7 +259,7 @@ static uint8_t BeginTarget(void)
         return 1u;
     }
 
-    /* stack: all cells online and at (almost) the same voltage */
+    /* stack: all BMs online, the selected cells at (almost) the same voltage */
     {
         uint16_t uMin = UINT16_MAX, uMax = 0u;
         for (i = 0u; i < NumBm(); i++)
@@ -248,6 +270,8 @@ static uint8_t BeginTarget(void)
                 EndTarget("OFFLINE", i, 0);
                 return 1u;
             }
+            if (!InStack(i))
+                continue;                           /* not on the rail: voltage does not matter */
             b = Boards_GetBm(i);
             if (b->uCellMv < uMin) uMin = b->uCellMv;
             if (b->uCellMv > uMax) uMax = b->uCellMv;
@@ -265,7 +289,7 @@ static uint8_t BeginTarget(void)
         EndTarget("NOSTACK", NO_BM, 0);
         return 1u;
     }
-    i = ConnectAll(BM_CONNECT_Z_ON);
+    i = ConnectStack();
     if (i != NO_BM)
     {
         EndTarget("OFFLINE", i, 0);
@@ -299,10 +323,14 @@ EisSeqResult_t EisSeq_Start(const EisJob_t *j)
         j->measTime >= BM_MEAS_TIME_COUNT ||
         (j->type == EIS_JOB_CELL && j->cellBm >= NumBm()))
         return EIS_SEQ_ERR_PARAM;
+    if ((j->type == EIS_JOB_STACK || j->type == EIS_JOB_ALL_CELLS_STACK) &&
+        (j->stackMask & AllBmMask()) == 0u)
+        return EIS_SEQ_ERR_PARAM;                   /* stack without a cell on the rail */
     if ((j->type == EIS_JOB_STACK || j->type == EIS_JOB_ALL_CELLS_STACK) && FindStackBm() == NO_BM)
         return EIS_SEQ_ERR_NO_STACK;
 
     job = *j;
+    job.stackMask &= AllBmMask();                   /* EIS_STACK_ALL -> the BMs of the list */
     numTargets = 0u;
     if (job.type == EIS_JOB_CELL)
         targets[numTargets++] = job.cellBm;
@@ -370,7 +398,7 @@ void EisSeq_Process(void)
         if ((HAL_GetTick() - tick) < CONNECT_SETTLE_MS)
             break;
         if (isStack)
-            failed = CheckConnectAll(BM_CONNECT_Z_ON);     /* stack: every cell on the rail */
+            failed = CheckConnectStack();                   /* stack: selected cells on the rail, others off */
         else
             failed = CheckConnect(measBm, BM_CONNECT_Z_OFF) ? NO_BM : measBm;
         if (failed != NO_BM)

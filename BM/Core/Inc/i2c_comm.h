@@ -29,7 +29,7 @@
  *                                  stored by the console command "izero" as fallback if
  *                                  that reading is implausible)              (reads back 0)
  *   0x02  ERROR_CODE   RO  uint8   0 none, 1 EIS config, 2 busy, 3 EIS communication,
- *                                  4 CONNECT_Z does not fit (cell: 0, stack: 1),
+ *                                  4 CONNECT_Z does not fit (cell measurement needs 0),
  *                                  5 temperature sensor, 6 TLE9015 ERRQ, 7 flash,
  *                                  8 TLE9010 ADC saturated (sweep stopped),
  *                                  9 overcurrent: cell current >= 2 A with CONNECT_Z on ->

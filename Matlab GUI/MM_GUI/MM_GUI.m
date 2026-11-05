@@ -57,6 +57,7 @@ function MM_GUI()
         'tTab',    'T Tab [°C]';
         'eis',     'EIS-Chips';
         'conz',    'CONNECT_Z';
+        'stackRail', 'Stackmessung: an Rail';
         '#PM',     'PM - Temperaturregelung';
         'pmAddr',  'Adresse';
         'pmState', 'Zustand';
@@ -99,6 +100,22 @@ function MM_GUI()
 
     AMPLITUDE_TEXT = {'50 mA', '100 mA', '200 mA', '300 mA', '400 mA', '500 mA'};
     WAVEFORM_TEXT  = {'Sinus', 'Rechteck'};
+    PLOT_FILE_TYPES = {'*.png', 'PNG-Bild (*.png)'; ...
+                       '*.pdf', 'PDF, Vektorgrafik (*.pdf)'; ...
+                       '*.fig', 'MATLAB-Figure (*.fig)'};
+    FREQ_LABEL_FONT_SIZE  = 8;             % Frequenzbeschriftung im Nyquist-Diagramm
+    FREQ_LABEL_TAG        = 'FreqLabel';
+    % Datentipp mit Frequenz: als CreateFcn-Text an jeder Messkurve, damit er auch in einer
+    % gespeicherten MATLAB-Figure (.fig) beim Oeffnen wieder gesetzt wird. Die Frequenzen
+    % stehen in UserData der Kurve (DataTipTemplate ab R2019a).
+    FREQ_TIP_CREATE_FCN = ['try, h = gcbo; h.DataTipTemplate.DataTipRows = [' ...
+                           'dataTipTextRow(''Re(Z) [m\Omega]'', ''XData''), ' ...
+                           'dataTipTextRow(''-Im(Z) [m\Omega]'', ''YData''), ' ...
+                           'dataTipTextRow(''f [Hz]'', h.UserData(:).'')]; catch, end'];
+    HZ_PER_KHZ            = 1000;
+    PLOT_EXPORT_DPI       = 300;           % Aufloesung des PNG
+    PLOT_EXPORT_SIZE_CM   = [16 12];       % Breite x Hoehe der gespeicherten Grafik
+    PLOT_EXPORT_AXES_POS  = [0.13 0.12 0.82 0.80];   % Achsen in der Export-Figure (normiert)
     MEAS_TIME_TEXT = {'25 ms', '50 ms', '100 ms', '200 ms', '400 ms', '800 ms', '1,6 s', '3,2 s'};  % Index 0..7 wie im BM
     FREQ_HZ        = frequencyTable();
     FREQ_TEXT      = arrayfun(@(k) sprintf('(%2d) %8.2f Hz', k - 1, FREQ_HZ(k)), 1:NUM_FREQ, ...
@@ -106,12 +123,14 @@ function MM_GUI()
 
     %% ---- Zustand (von allen verschachtelten Funktionen geteilt) -------------
     device     = [];              % serialport-Objekt
+    tipWarned  = false;           % Hinweis 'Datentipp nicht verfuegbar' schon gezeigt
     noAddr     = [false false];   % BM / PM antwortet auf der Standardadresse 0x10 / 0x20
     statTimer  = [];
     cfg        = struct('bmAddr', {{}}, 'pmAddr', {{}}, 'pmSource', []);
     cellNames  = strings(1, 0);              % Zellnamen (in der Zellenuebersicht editierbar)
     gridH      = struct();                   % Handles der Zellenuebersicht: gridH.<Zeile>(Zelle)
     numCells   = 0;                          % Spalten der Zellenuebersicht
+    stackSel   = true(1, 0);                 % Zelle k bei der Stackmessung an der Rail (Haken)
     bmLast     = struct('u', {}, 't', {});   % letzte Messwerte je BM (fuer die Datei)
     pmLast     = struct('tAct', {}, 'tPt', {}, 'tSet', {});
     meas       = containers.Map();           % laufende Messung je Ziel ('C1', 'S', ...)
@@ -126,6 +145,12 @@ function MM_GUI()
     fig = figure('Name', 'Batteriespeicher-Testsystem (MM)', 'Tag', 'MM_GUI', ...
                  'NumberTitle', 'off', 'MenuBar', 'none', 'Units', 'pixels', ...
                  'Position', [40 40 1320 880], 'CloseRequestFcn', @onClose);
+    try
+        set(fig, 'WindowState', 'maximized');              % ab R2018a
+    catch
+        set(fig, 'Units', 'normalized', 'OuterPosition', [0 0 1 1]);   % aeltere Versionen
+        set(fig, 'Units', 'pixels');
+    end
 
     % Verbindung
     pConn = uipanel(fig, 'Title', 'Verbindung', 'Units', 'normalized', 'Position', [0.005 0.935 0.49 0.06]);
@@ -219,6 +244,9 @@ function MM_GUI()
     ax = axes(fig, 'Units', 'normalized', 'Position', [0.55 0.42 0.43 0.54]);
     grid(ax, 'on'); hold(ax, 'on'); axis(ax, 'equal');
     xlabel(ax, 'Re(Z) [m\Omega]'); ylabel(ax, '-Im(Z) [m\Omega]'); title(ax, 'Nyquist');
+    uicontrol(fig, 'Style', 'pushbutton', 'String', 'Diagramm speichern', 'Units', 'normalized', ...
+        'Position', [0.885 0.962 0.105 0.032], 'TooltipString', 'Nyquist-Diagramm als PNG, PDF oder MATLAB-Figure speichern', ...
+        'Callback', @(~, ~) saveNyquist());
     hLog = uicontrol(fig, 'Style', 'listbox', 'Units', 'normalized', 'Position', [0.50 0.005 0.495 0.36], ...
         'FontName', 'Consolas', 'FontSize', 8, 'Max', 2, 'Min', 0, 'String', {});
 
@@ -474,6 +502,7 @@ function MM_GUI()
         delete(get(pGrid, 'Children'));
         gridH = struct();
         numCells = max(numel(cfg.bmAddr), numel(cfg.pmAddr));
+        stackSel(end + 1:numel(cfg.bmAddr)) = true;     % neue Zellen: standardmaessig verbunden
         for k = numel(cellNames) + 1:numCells
             cellNames(k) = string(sprintf('Zelle_%c', FIRST_CELL_LETTER + k - 1));
         end
@@ -505,6 +534,13 @@ function MM_GUI()
                         'Units', 'normalized', 'Position', pos, 'FontSize', GRID_FONT_SIZE, ...
                         'TooltipString', 'Name der Zelle (für Log und Ergebnisdatei)', ...
                         'Callback', @(src, ~) onCellNameEdited(k, src));
+                elseif strcmp(key, 'stackRail') && k <= numel(cfg.bmAddr)
+                    h(k) = uicontrol(pGrid, 'Style', 'checkbox', 'String', 'verbunden', 'Value', stackSel(k), ...
+                        'Units', 'normalized', 'Position', pos, 'FontSize', GRID_FONT_SIZE, ...
+                        'BackgroundColor', COLOR_VALUE, 'TooltipString', ...
+                        sprintf(['Haken gesetzt: Zelle %d ist bei der Stackmessung mit der Rail verbunden ' ...
+                                 '(CONNECT_Z = 1), sonst CONNECT_Z = 0'], k), ...
+                        'Callback', @(src, ~) onStackSelEdited(k, src));
                 else
                     h(k) = gridBox(pGrid, 'value', '-', pos, COLOR_VALUE, 'normal');
                 end
@@ -517,7 +553,7 @@ function MM_GUI()
             if k <= numel(cfg.bmAddr)
                 setGrid('bmAddr', k, cfg.bmAddr{k});
             else
-                setGrid({'bmAddr', 'bmState', 'u', 'i', 'tTab', 'eis', 'conz'}, k, 'kein BM', COLOR_NO_BOARD);
+                setGrid({'bmAddr', 'bmState', 'u', 'i', 'tTab', 'eis', 'conz', 'stackRail'}, k, 'kein BM', COLOR_NO_BOARD);
             end
             if k <= numel(cfg.pmAddr)
                 setGrid('pmAddr', k, cfg.pmAddr{k});
@@ -561,6 +597,10 @@ function MM_GUI()
                 set(h, 'BackgroundColor', color);
             end
         end
+    end
+
+    function onStackSelEdited(k, src)
+        stackSel(k) = logical(get(src, 'Value'));
     end
 
     function onCellNameEdited(k, src)
@@ -656,6 +696,72 @@ function MM_GUI()
     %% =========================================================================
     %  EIS
     %  =========================================================================
+    function saveNyquist()
+        % Speichert nur das Nyquist-Diagramm (ohne GUI-Elemente); das Format folgt aus dem
+        % im Dialog gewaehlten Dateityp: PNG (Bild), PDF (Vektorgrafik) oder MATLAB-Figure
+        if isempty(get(ax, 'Children'))
+            logMsg('Kein Diagramm zum Speichern vorhanden');
+            return;
+        end
+        defaultName = fullfile(get(hFolder, 'String'), sprintf('%s_%s_Nyquist.png', ...
+            regexprep(get(hFilename, 'String'), '[^\w\-]', '_'), char(datetime('now', 'Format', 'yyyy-MM-dd_HHmmss'))));
+        [file, folder, typeIndex] = uiputfile(PLOT_FILE_TYPES, 'Nyquist-Diagramm speichern', defaultName);
+        if isequal(file, 0)
+            return;                                         % abgebrochen
+        end
+        [~, ~, ext] = fileparts(file);
+        if isempty(ext)
+            ext = extractAfter(PLOT_FILE_TYPES{typeIndex, 1}, '*');
+            file = [file ext];
+        end
+        filePath = fullfile(folder, file);
+
+        % Kopie des Diagramms (mit Legende) in einer unsichtbaren Figure
+        tmp = figure('Visible', 'off', 'Color', 'w', 'Units', 'centimeters', ...
+                     'Position', [0 0 PLOT_EXPORT_SIZE_CM]);
+        cleanupFig = onCleanup(@() close(tmp));
+        objs = ax;
+        if ~isempty(ax.Legend)
+            objs = [ax.Legend, ax];                         % Legende nur zusammen mit ihren Achsen kopierbar
+        end
+        copies = copyobj(objs, tmp);
+        set(copies(end), 'Units', 'normalized', 'Position', PLOT_EXPORT_AXES_POS);
+        curves = findobj(copies(end), 'Type', 'line');
+        for c = 1:numel(curves)                             % copyobj uebernimmt den Datentipp nicht
+            if numel(curves(c).UserData) == numel(curves(c).XData)
+                applyFrequencyDataTip(curves(c));
+            end
+        end
+
+        try
+            switch lower(ext)
+                case '.png'
+                    if exist('exportgraphics', 'file')
+                        exportgraphics(copies(end), filePath, 'Resolution', PLOT_EXPORT_DPI);
+                    else
+                        print(tmp, filePath, '-dpng', sprintf('-r%d', PLOT_EXPORT_DPI));
+                    end
+                case '.pdf'
+                    if exist('exportgraphics', 'file')
+                        exportgraphics(copies(end), filePath, 'ContentType', 'vector');
+                    else
+                        print(tmp, filePath, '-dpdf', '-bestfit');
+                    end
+                case '.fig'
+                    % beim spaeteren Oeffnen sichtbar, obwohl die Kopie unsichtbar gespeichert wird
+                    set(tmp, 'CreateFcn', 'set(gcbo, ''Visible'', ''on'')');
+                    savefig(tmp, filePath);
+                otherwise
+                    logMsg(sprintf('Dateityp %s wird nicht unterstuetzt (PNG, PDF oder FIG)', ext));
+                    return;
+            end
+            logMsg(sprintf('Nyquist-Diagramm gespeichert: %s', filePath));
+        catch ex
+            logMsg(sprintf('Diagramm konnte nicht gespeichert werden: %s', ex.message));
+        end
+        clear cleanupFig;                                   % schliesst die Kopie
+    end
+
     function chooseFolder()
         d = uigetdir(get(hFolder, 'String'));
         if ischar(d)
@@ -692,16 +798,24 @@ function MM_GUI()
                                    'waveform', WAVEFORM_TEXT{get(hWave, 'Value')}, ...
                                    'averages', get(hAvg, 'Value'), ...
                                    'measTime', MEAS_TIME_TEXT{get(hMeasTime, 'Value')});
+        % Zellen an der Rail bei der Stackmessung: Bitmaske, Bit k-1 = BM k
+        selected = find(stackSel(1:n));
+        stackMask = sum(bitshift(1, selected - 1));
+        if any(strcmp(target, {'S', 'ALLS'})) && stackMask == 0
+            logMsg('Stackmessung: mindestens eine Zelle muss mit der Rail verbunden sein (Haken in der Zellenübersicht)');
+            return;
+        end
+        jobInfo.settings.stackCells = strjoin(arrayfun(@num2str, selected, 'UniformOutput', false), ', ');
         meas = containers.Map();
         cla(ax);
         plotHandles = containers.Map();
-        sendCommand(sprintf('EIS;%s;%d;%d;%d;%d;%d;%d', target, fStart, fStop, ...
+        sendCommand(sprintf('EIS;%s;%d;%d;%d;%d;%d;%d;%d', target, fStart, fStop, ...
                             get(hAmp, 'Value') - 1, get(hWave, 'Value') - 1, get(hAvg, 'Value'), ...
-                            get(hMeasTime, 'Value') - 1));
+                            get(hMeasTime, 'Value') - 1, stackMask));
     end
 
     function onEisBegin(f)
-        % EISBEGIN;target;fstart;fstop;amp;wave;avg;time
+        % EISBEGIN;target;fstart;fstop;amp;wave;avg;time;stackMask
         t = char(f(2));
         m.target = t;
         m.cells  = zeros(0, 3);          % [BM, U mV, T degC]
@@ -748,6 +862,70 @@ function MM_GUI()
             plotHandles(t) = plot(ax, re, -im, '-o', 'DisplayName', targetText(t));
             legend(ax, 'show', 'Location', 'best');
         end
+        set(plotHandles(t), 'UserData', m.data(:, 2), 'CreateFcn', FREQ_TIP_CREATE_FCN);
+        applyFrequencyDataTip(plotHandles(t));
+    end
+
+    function applyFrequencyDataTip(h)
+        % Datentipp beim Ueberfahren / Anklicken eines Punkts: Re, -Im und Frequenz
+        % (Frequenzen aus UserData der Kurve; gleicher Code wie FREQ_TIP_CREATE_FCN)
+        try                                                 % DataTipTemplate ab R2019a
+            h.DataTipTemplate.DataTipRows = [ ...
+                dataTipTextRow('Re(Z) [m\Omega]', 'XData'), ...
+                dataTipTextRow('-Im(Z) [m\Omega]', 'YData'), ...
+                dataTipTextRow('f [Hz]', h.UserData(:).')];
+        catch ex
+            if ~tipWarned                                   % nur einmal melden
+                logMsg(sprintf('Frequenz-Datentipp nicht verfuegbar (MATLAB ab R2019a noetig): %s', ex.message));
+                tipWarned = true;
+            end
+        end
+    end
+
+    function annotateFrequencies(t)
+        % Beschriftet Start-, Endfrequenz und - falls vorhanden - den Knickpunkt
+        % (Uebergang Halbkreis -> Diffusionsast = Minimum von -Im nach dem Scheitel)
+        if ~isKey(plotHandles, t) || ~isvalid(plotHandles(t))
+            return;
+        end
+        h = plotHandles(t);
+        x = get(h, 'XData');  y = get(h, 'YData');
+        fHz = meas(t).data(:, 2);
+        n = numel(x);
+        if n == 0
+            return;
+        end
+        points = {1, 'Start: '; n, 'Ende: '};
+        k = kneeIndex(y);
+        if ~isempty(k)
+            points(end + 1, :) = {k, 'Knick: '};
+        end
+        for p = 1:size(points, 1)
+            i = points{p, 1};
+            text(ax, x(i), y(i), sprintf('  %s%s', points{p, 2}, formatFrequency(fHz(i))), ...
+                 'Color', get(h, 'Color'), 'FontSize', FREQ_LABEL_FONT_SIZE, 'Tag', FREQ_LABEL_TAG, ...
+                 'HorizontalAlignment', 'left', 'VerticalAlignment', 'bottom', 'Clipping', 'on');
+        end
+    end
+
+    function k = kneeIndex(y)
+        % Index des Knickpunkts: kleinstes -Im nach dem Scheitel des Halbkreises
+        % (Daten von hoher nach niedriger Frequenz); leer, wenn danach kein Anstieg folgt
+        k = [];
+        [~, apex] = max(y);
+        [~, rel] = min(y(apex:end));
+        candidate = apex + rel - 1;
+        if candidate > apex && candidate < numel(y)
+            k = candidate;
+        end
+    end
+
+    function s = formatFrequency(fHz)
+        if fHz >= HZ_PER_KHZ
+            s = sprintf('%.3g kHz', fHz / HZ_PER_KHZ);
+        else
+            s = sprintf('%.3g Hz', fHz);
+        end
     end
 
     function onEisEnd(f)
@@ -755,6 +933,7 @@ function MM_GUI()
         t = char(f(2));
         if f(3) == "OK"
             file = EIS_Textdatei_schreiben(meas(t), jobInfo, targetText(t));
+            annotateFrequencies(t);
             logMsg(sprintf('EIS %s fertig: %s', targetText(t), file));
         else
             reason = char(f(4));

@@ -1,0 +1,14 @@
+# Y285_20C_Stackmessung_über_MOSFET_Sense_an_Zelle_C1
+# 
+# Kommentar: 
+# Messobjekt: Zelle 1 (Zelle_A)
+# Start: 2026-11-05 13:31:25
+# 
+# BM 1 Zelle_A              Zell-Spg:  3928 mV   T_Tab:  22.66 °C
+# PM 1   T_Soll:  25.00 °C   T_Ist:  54.61 °C   T_PT1000:  54.61 °C
+# 
+# Start_Index:    Stopp_Index:    Amplitude:   Signalform:  Mittelung:   Messdauer:  
+# 24              24              500 mA       Sinus        9            3,2 s       
+
+     freq/Hz	   Re(Z)/Ohm	   Im(Z)/Ohm
+      122.07	    0.007486	   -0.000489

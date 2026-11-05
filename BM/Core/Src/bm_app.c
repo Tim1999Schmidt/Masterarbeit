@@ -44,8 +44,10 @@ App_Error_t App_StartEis(const Eis_Config_t *cfg)
 {
     Eis_Result_t r;
 
-    if ((cfg->chip == EIS_CHIP_CELL && BmIo_GetConnectZ()) ||
-        (cfg->chip == EIS_CHIP_STACK && !BmIo_GetConnectZ()))
+    /* cell measurement: the cell must be off the rail. A stack measurement
+     * is allowed in both states - the MM decides which cells are on the rail,
+     * the stack TLE9010 is supplied from the rail itself. */
+    if (cfg->chip == EIS_CHIP_CELL && BmIo_GetConnectZ())
     {
         latchedError = APP_ERR_CONNECT_STATE;
         return latchedError;

@@ -46,9 +46,11 @@ extern UART_HandleTypeDef huart2;   /* initialised by MX_USART2_UART_Init() in m
 #define PMGAIN_FIELDS         5u      /* PMGAIN;<pm>;<kp>;<ki>;<kd> */
 #define PMGAIN_NUMBERS        3u
 #define EIS_CMD_FIELDS_MIN    7u      /* EIS;<target>;<fstart>;<fstop>;<amp>;<wave>;<avg> */
-#define EIS_CMD_FIELDS_MAX    8u      /* ...;<time> (optional, default BM_MEAS_TIME_DEFAULT) */
+#define EIS_CMD_FIELDS_TIME   8u      /* ...;<time> (optional, default BM_MEAS_TIME_DEFAULT) */
+#define EIS_CMD_FIELDS_MAX    9u      /* ...;<time>;<stack> (optional, default EIS_STACK_ALL) */
 #define EIS_CMD_NUMBERS_MAX   (EIS_CMD_FIELDS_MAX - SECOND_ARG)
 #define EIS_NUM_MEAS_TIME     5u      /* index of <time> among the numbers */
+#define EIS_NUM_STACK_MASK    6u      /* index of <stack> among the numbers */
 #define FIRST_ARG             1u      /* field index of the first argument */
 #define SECOND_ARG            2u
 #define CELL_TARGET_PREFIX    'C'
@@ -392,7 +394,8 @@ static void CmdEis(const char *cmd, char **f, uint8_t n)
     job.amplitude = (uint8_t)v[2];
     job.waveform  = (uint8_t)v[3];
     job.averages  = (uint8_t)v[4];
-    job.measTime  = (n == EIS_CMD_FIELDS_MAX) ? (uint8_t)v[EIS_NUM_MEAS_TIME] : BM_MEAS_TIME_DEFAULT;
+    job.measTime  = (n >= EIS_CMD_FIELDS_TIME) ? (uint8_t)v[EIS_NUM_MEAS_TIME] : BM_MEAS_TIME_DEFAULT;
+    job.stackMask = (n >= EIS_CMD_FIELDS_MAX) ? (uint8_t)v[EIS_NUM_STACK_MASK] : EIS_STACK_ALL;
 
     switch (EisSeq_Start(&job))
     {
