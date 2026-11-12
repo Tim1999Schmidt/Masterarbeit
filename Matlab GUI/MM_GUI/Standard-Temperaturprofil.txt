@@ -1,0 +1,3 @@
+# Temperaturprofil (eine Zeile je Zelle, Werte in °C je Schritt)
+Zelle 1 (Zelle_A): 25, 35, 35, 45, 45, 35, 25, 15, 5, 5, 15, 15, 25, 25
+Zelle 2 (Zelle_B): 25, 25, 35, 35, 45, 45, 35, 25, 15, 5, 5, 15, 15, 25

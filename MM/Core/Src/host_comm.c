@@ -211,7 +211,7 @@ static void CmdCfgList(const char *cmd, char **f, uint8_t n, uint8_t isBm)
     {
         c.numBm = count;
         for (i = 0u; i < c.numPm; i++)          /* sources pointing at removed BMs */
-            if (c.pmSource[i] > c.numBm)
+            if (!MmConfig_IsSourceAllowed(i, c.pmSource[i], c.numBm))
                 c.pmSource[i] = MM_PM_SOURCE_PT1000;
     }
     else
@@ -342,6 +342,8 @@ static void CmdPmSource(const char *cmd, char **f, uint8_t n)
     if (n != VALUE_CMD_FIELDS || !ParseInts(f, FIRST_ARG, PMSRC_NUMBERS, v) || v[0] < 1 || v[0] > (int32_t)c->numPm ||
         v[1] < (int32_t)MM_PM_SOURCE_PT1000 || v[1] > (int32_t)c->numBm)
         { Err(cmd, "PARAM"); return; }
+    if (!MmConfig_IsSourceAllowed((uint8_t)(v[0] - 1), (uint8_t)v[1], c->numBm))
+        { Err(cmd, "FOREIGN"); return; }        /* only the PT1000 or the tab sensor of the same cell */
     c->pmSource[v[0] - 1] = (uint8_t)v[1];
     if (Boards_PmApplySource((uint8_t)(v[0] - 1))) Ok(cmd); else Err(cmd, "I2C");
 }

@@ -40,8 +40,12 @@
 #define MM_DEFAULT_PM_ADDR_FIRST  (MM_UNASSIGNED_PM_ADDR + 1u)   /* PM 1 = 0x21, PM 2 = 0x22, ... */
 
 /* temperature source of a PM: the onboard PT1000, or the tab sensor of BM k
- * (1..numBm) whose temperature the MM forwards to the PM (T_EXT) */
+ * (1..numBm) whose temperature the MM forwards to the PM (T_EXT).
+ * PM k may only use the tab sensor of ITS OWN cell, i.e. BM k: with the sensor of
+ * another cell the controller would see a wrong temperature and could heat or cool
+ * without limit. MmConfig_IsSourceAllowed() checks this rule. */
 #define MM_PM_SOURCE_PT1000   0u
+#define MM_PM_SOURCE_OWN_TAB(pmIndex)  ((uint8_t)((pmIndex) + 1u))   /* BM number of the same cell (pmIndex 0-based) */
 
 typedef struct
 {
@@ -61,6 +65,10 @@ MmConfig_t *MmConfig_Get(void);
 /* Checks a list: counts in range, addresses valid, all different and none of
  * the unassigned addresses, PM sources pointing at existing BMs. Returns 1 if valid. */
 uint8_t MmConfig_IsValid(const MmConfig_t *cfg);
+
+/* 1 if PM pmIndex (0-based) may use this source: MM_PM_SOURCE_PT1000, or the tab
+ * sensor of its own cell (MM_PM_SOURCE_OWN_TAB(pmIndex)) if that BM exists. */
+uint8_t MmConfig_IsSourceAllowed(uint8_t pmIndex, uint8_t source, uint8_t numBm);
 
 /* Writes the RAM copy to flash (skipped if unchanged). Returns 1 on success. */
 uint8_t MmConfig_Save(void);

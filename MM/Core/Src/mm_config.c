@@ -59,6 +59,13 @@ static void SetDefaults(MmConfig_t *c)
     }
 }
 
+uint8_t MmConfig_IsSourceAllowed(uint8_t pmIndex, uint8_t source, uint8_t numBm)
+{
+    if (source == MM_PM_SOURCE_PT1000)
+        return 1u;
+    return (uint8_t)(source == MM_PM_SOURCE_OWN_TAB(pmIndex) && source <= numBm);
+}
+
 uint8_t MmConfig_IsValid(const MmConfig_t *c)
 {
     uint8_t all[MM_MAX_BM + MM_MAX_PM];
@@ -71,8 +78,8 @@ uint8_t MmConfig_IsValid(const MmConfig_t *c)
     for (i = 0u; i < c->numPm; i++)
     {
         all[n++] = c->pmAddr[i];
-        if (c->pmSource[i] > c->numBm)
-            return 0u;
+        if (!MmConfig_IsSourceAllowed(i, c->pmSource[i], c->numBm))
+            return 0u;                            /* tab sensor of another cell */
     }
     for (i = 0u; i < n; i++)
     {
@@ -89,6 +96,7 @@ uint8_t MmConfig_IsValid(const MmConfig_t *c)
 void MmConfig_Load(void)
 {
     CfgRecord_t r;
+    uint8_t i;
     memcpy(&r, (const void *)CFG_PAGE_ADDR, sizeof(r));
 
     SetDefaults(&cfg);
@@ -101,6 +109,11 @@ void MmConfig_Load(void)
         memcpy(c.bmAddr,   r.bmAddr,   sizeof(c.bmAddr));
         memcpy(c.pmAddr,   r.pmAddr,   sizeof(c.pmAddr));
         memcpy(c.pmSource, r.pmSource, sizeof(c.pmSource));
+        /* older records may still hold the tab sensor of another cell: fall back to the
+         * PT1000 for that PM instead of discarding the whole board list */
+        for (i = 0u; i < MM_MAX_PM; i++)
+            if (!MmConfig_IsSourceAllowed(i, c.pmSource[i], c.numBm))
+                c.pmSource[i] = MM_PM_SOURCE_PT1000;
         if (MmConfig_IsValid(&c))
             cfg = c;
     }

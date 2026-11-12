@@ -20,12 +20,13 @@
  *   HELLO                         -> OK;HELLO;MM;<firmware version>
  *   CFG?                          -> CFG;BM;<n>;<addr1>;...    (addresses hex)
  *                                    CFG;PM;<n>;<addr1>;...
- *                                    CFG;SRC;<src PM1>;...     (0 = PT1000, k = tab sensor of BM k)
+ *                                    CFG;SRC;<src PM1>;...     (0 = PT1000, k = tab sensor of BM k = own cell)
  *                                    OK;CFG?
  *   CFGBM;<addr1>;<addr2>;...     set the BM list (1..8 addresses; 0x10 / 0x20 are the
  *                                 unassigned default addresses -> ERR;CFGBM;UNASSIGNED)
  *   CFGPM;<addr1>;...             set the PM list (0..8 addresses; sources reset to PT1000)
- *   PMSRC;<pm>;<0|bm>             temperature source of a PM
+ *   PMSRC;<pm>;<0|pm>             temperature source of PM k: 0 = PT1000, k = tab sensor of
+ *                                 the same cell (BM k); another cell -> ERR;PMSRC;FOREIGN
  *   SAVE                          write the board list to flash
  *   SCAN                          -> SCAN;<addr>;<addr>;...  all addresses that answer
  *                                    OK;SCAN

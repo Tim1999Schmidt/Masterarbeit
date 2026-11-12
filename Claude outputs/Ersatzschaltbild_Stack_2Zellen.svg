@@ -1,0 +1,147 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 780" width="1120" height="780" font-family="Arial, Helvetica, sans-serif" xmlns:c2pa="http://c2pa.org/manifest">
+<rect width="1120" height="780" fill="#fff"/>
+<polyline points="250.00,120.00 1060.00,120.00" fill="none" stroke="#000000" stroke-width="6"/>
+<polyline points="250.00,690.00 1060.00,690.00" fill="none" stroke="#000000" stroke-width="6"/>
+<text x="1068" y="125" text-anchor="start" font-size="14" fill="#000000"><tspan>Rail +</tspan></text>
+<text x="1068" y="695" text-anchor="start" font-size="14" fill="#000000"><tspan>Rail −</tspan></text>
+<rect x="40" y="320" width="170" height="160" rx="6" fill="#F4F4F4" stroke="#000000" stroke-width="1.6"/>
+<text x="125.0" y="344" text-anchor="middle" font-size="15" fill="#000000" font-weight="bold"><tspan>Stack-EIS</tspan></text>
+<text x="125.0" y="362" text-anchor="middle" font-size="12" fill="#444444"><tspan>TLE9010 (BM1-Stack)</tspan></text>
+<text x="202" y="395" text-anchor="end" font-size="12" fill="#444444"><tspan>F+</tspan></text>
+<polyline points="210.00,390.00 265.00,390.00 265.00,120.00" fill="none" stroke="#C0392B" stroke-width="1.8"/>
+<circle cx="265" cy="120" r="4" fill="#000000" stroke="none"/>
+<text x="202" y="420" text-anchor="end" font-size="12" fill="#444444"><tspan>S+</tspan></text>
+<polyline points="210.00,415.00 300.00,415.00 300.00,120.00" fill="none" stroke="#1F5FBF" stroke-width="1.4" stroke-dasharray="6 4"/>
+<circle cx="300" cy="120" r="4" fill="#000000" stroke="none"/>
+<text x="202" y="445" text-anchor="end" font-size="12" fill="#444444"><tspan>S−</tspan></text>
+<polyline points="210.00,440.00 300.00,440.00 300.00,690.00" fill="none" stroke="#1F5FBF" stroke-width="1.4" stroke-dasharray="6 4"/>
+<circle cx="300" cy="690" r="4" fill="#000000" stroke="none"/>
+<text x="202" y="470" text-anchor="end" font-size="12" fill="#444444"><tspan>F−</tspan></text>
+<polyline points="210.00,465.00 265.00,465.00 265.00,690.00" fill="none" stroke="#C0392B" stroke-width="1.8"/>
+<circle cx="265" cy="690" r="4" fill="#000000" stroke="none"/>
+<circle cx="470" cy="120" r="4" fill="#000000" stroke="none"/>
+<polyline points="470.00,120.00 470.00,135.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<polyline points="470.00,165.00 470.00,180.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<circle cx="470" cy="165.0" r="4" fill="#000000" stroke="none"/>
+<circle cx="470" cy="135.0" r="3" fill="#000000" stroke="none"/>
+<polyline points="470.00,165.00 484.00,138.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<text x="454" y="155.0" text-anchor="end" font-size="14" fill="#000000"><tspan>T1</tspan></text>
+<polyline points="470.00,180.00 470.00,190.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<polyline points="470.00,240.00 470.00,250.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<rect x="460" y="190.0" width="20" height="50" rx="0" fill="#FFFFFF" stroke="#000000" stroke-width="1.6"/>
+<text x="488" y="220.0" text-anchor="start" font-size="14" fill="#000000"><tspan>R</tspan><tspan font-size="10.1" dy="3">0,1</tspan></text>
+<polyline points="470.00,250.00 470.00,257.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<polyline points="470.00,313.00 470.00,320.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<polyline points="470.00,257.00 471.81,257.24 473.50,257.94 474.95,259.05 476.06,260.50 476.76,262.19 477.00,264.00 476.76,265.81 476.06,267.50 474.95,268.95 473.50,270.06 471.81,270.76 470.00,271.00 470.00,271.00 471.81,271.24 473.50,271.94 474.95,273.05 476.06,274.50 476.76,276.19 477.00,278.00 476.76,279.81 476.06,281.50 474.95,282.95 473.50,284.06 471.81,284.76 470.00,285.00 470.00,285.00 471.81,285.24 473.50,285.94 474.95,287.05 476.06,288.50 476.76,290.19 477.00,292.00 476.76,293.81 476.06,295.50 474.95,296.95 473.50,298.06 471.81,298.76 470.00,299.00 470.00,299.00 471.81,299.24 473.50,299.94 474.95,301.05 476.06,302.50 476.76,304.19 477.00,306.00 476.76,307.81 476.06,309.50 474.95,310.95 473.50,312.06 471.81,312.76 470.00,313.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<text x="488" y="290.0" text-anchor="start" font-size="14" fill="#000000"><tspan>L</tspan><tspan font-size="10.1" dy="3">0,1</tspan></text>
+<polyline points="470.00,320.00 470.00,330.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<circle cx="470" cy="330" r="4" fill="#000000" stroke="none"/>
+<polyline points="440.00,330.00 500.00,330.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<polyline points="440.00,330.00 440.00,350.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<polyline points="440.00,400.00 440.00,420.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<rect x="430" y="350.0" width="20" height="50" rx="0" fill="#FFFFFF" stroke="#000000" stroke-width="1.6"/>
+<text x="422" y="380.0" text-anchor="end" font-size="14" fill="#000000"><tspan>R</tspan><tspan font-size="10.1" dy="3">1,1</tspan></text>
+<polyline points="500.00,330.00 500.00,347.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<polyline points="500.00,403.00 500.00,420.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<polyline points="500.00,347.00 501.81,347.24 503.50,347.94 504.95,349.05 506.06,350.50 506.76,352.19 507.00,354.00 506.76,355.81 506.06,357.50 504.95,358.95 503.50,360.06 501.81,360.76 500.00,361.00 500.00,361.00 501.81,361.24 503.50,361.94 504.95,363.05 506.06,364.50 506.76,366.19 507.00,368.00 506.76,369.81 506.06,371.50 504.95,372.95 503.50,374.06 501.81,374.76 500.00,375.00 500.00,375.00 501.81,375.24 503.50,375.94 504.95,377.05 506.06,378.50 506.76,380.19 507.00,382.00 506.76,383.81 506.06,385.50 504.95,386.95 503.50,388.06 501.81,388.76 500.00,389.00 500.00,389.00 501.81,389.24 503.50,389.94 504.95,391.05 506.06,392.50 506.76,394.19 507.00,396.00 506.76,397.81 506.06,399.50 504.95,400.95 503.50,402.06 501.81,402.76 500.00,403.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<text x="518" y="380.0" text-anchor="start" font-size="14" fill="#000000"><tspan>L</tspan><tspan font-size="10.1" dy="3">1,1</tspan></text>
+<polyline points="440.00,420.00 500.00,420.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<circle cx="470" cy="420" r="4" fill="#000000" stroke="none"/>
+<polyline points="470.00,420.00 470.00,440.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<rect x="375" y="128" width="190" height="314" rx="0" fill="none" stroke="#777777" stroke-width="1" stroke-dasharray="3 3"/>
+<text x="470" y="108" text-anchor="middle" font-size="12" fill="#555555" font-style="italic"><tspan>Kontaktierung 1 (Skin-Modell)</tspan></text>
+<polyline points="470.00,440.00 470.00,509.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<polyline points="470.00,521.00 470.00,590.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<polyline points="448.00,509.00 492.00,509.00" fill="none" stroke="#000000" stroke-width="3"/>
+<polyline points="459.00,521.00 481.00,521.00" fill="none" stroke="#000000" stroke-width="6"/>
+<text x="440" y="505.0" text-anchor="end" font-size="14" fill="#000000"><tspan>+</tspan></text>
+<text x="440" y="520.0" text-anchor="end" font-size="14" fill="#000000"><tspan>Zelle 1</tspan></text>
+<text x="440" y="537.0" text-anchor="end" font-size="14" fill="#000000"><tspan>Z</tspan><tspan font-size="10.1" dy="3">Zelle,1</tspan></text>
+<circle cx="470" cy="635" r="13" fill="none" stroke="#000000" stroke-width="1.6"/>
+<polyline points="457.00,635.00 448.00,635.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<text x="444" y="633" text-anchor="end" font-size="12" fill="#444444"><tspan>Hall-Sensor</tspan></text>
+<text x="444" y="648" text-anchor="end" font-size="12" fill="#444444"><tspan>(BM1)</tspan></text>
+<polyline points="470.00,590.00 470.00,622.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<polyline points="470.00,648.00 470.00,690.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<circle cx="470" cy="690" r="4" fill="#000000" stroke="none"/>
+<rect x="550" y="445" width="170" height="140" rx="6" fill="#F4F4F4" stroke="#000000" stroke-width="1.6"/>
+<text x="650" y="511.0" text-anchor="middle" font-size="15" fill="#000000" font-weight="bold"><tspan>Cell-EIS</tspan></text>
+<text x="650" y="529.0" text-anchor="middle" font-size="12" fill="#444444"><tspan>TLE9010 (BM1-Cell)</tspan></text>
+<text x="558" y="465" text-anchor="start" font-size="12" fill="#444444"><tspan>F+</tspan></text>
+<polyline points="550.00,460.00 470.00,460.00" fill="none" stroke="#C0392B" stroke-width="1.8"/>
+<circle cx="470" cy="460" r="4" fill="#000000" stroke="none"/>
+<text x="558" y="493" text-anchor="start" font-size="12" fill="#444444"><tspan>S+</tspan></text>
+<polyline points="550.00,488.00 470.00,488.00" fill="none" stroke="#1F5FBF" stroke-width="1.4" stroke-dasharray="6 4"/>
+<circle cx="470" cy="488" r="4" fill="#000000" stroke="none"/>
+<text x="558" y="547" text-anchor="start" font-size="12" fill="#444444"><tspan>S−</tspan></text>
+<polyline points="550.00,542.00 470.00,542.00" fill="none" stroke="#1F5FBF" stroke-width="1.4" stroke-dasharray="6 4"/>
+<circle cx="470" cy="542" r="4" fill="#000000" stroke="none"/>
+<text x="558" y="575" text-anchor="start" font-size="12" fill="#444444"><tspan>F−</tspan></text>
+<polyline points="550.00,570.00 470.00,570.00" fill="none" stroke="#C0392B" stroke-width="1.8"/>
+<circle cx="470" cy="570" r="4" fill="#000000" stroke="none"/>
+<circle cx="830" cy="120" r="4" fill="#000000" stroke="none"/>
+<polyline points="830.00,120.00 830.00,135.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<polyline points="830.00,165.00 830.00,180.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<circle cx="830" cy="165.0" r="4" fill="#000000" stroke="none"/>
+<circle cx="830" cy="135.0" r="3" fill="#000000" stroke="none"/>
+<polyline points="830.00,165.00 844.00,138.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<text x="814" y="155.0" text-anchor="end" font-size="14" fill="#000000"><tspan>T1</tspan></text>
+<polyline points="830.00,180.00 830.00,190.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<polyline points="830.00,240.00 830.00,250.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<rect x="820" y="190.0" width="20" height="50" rx="0" fill="#FFFFFF" stroke="#000000" stroke-width="1.6"/>
+<text x="848" y="220.0" text-anchor="start" font-size="14" fill="#000000"><tspan>R</tspan><tspan font-size="10.1" dy="3">0,2</tspan></text>
+<polyline points="830.00,250.00 830.00,257.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<polyline points="830.00,313.00 830.00,320.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<polyline points="830.00,257.00 831.81,257.24 833.50,257.94 834.95,259.05 836.06,260.50 836.76,262.19 837.00,264.00 836.76,265.81 836.06,267.50 834.95,268.95 833.50,270.06 831.81,270.76 830.00,271.00 830.00,271.00 831.81,271.24 833.50,271.94 834.95,273.05 836.06,274.50 836.76,276.19 837.00,278.00 836.76,279.81 836.06,281.50 834.95,282.95 833.50,284.06 831.81,284.76 830.00,285.00 830.00,285.00 831.81,285.24 833.50,285.94 834.95,287.05 836.06,288.50 836.76,290.19 837.00,292.00 836.76,293.81 836.06,295.50 834.95,296.95 833.50,298.06 831.81,298.76 830.00,299.00 830.00,299.00 831.81,299.24 833.50,299.94 834.95,301.05 836.06,302.50 836.76,304.19 837.00,306.00 836.76,307.81 836.06,309.50 834.95,310.95 833.50,312.06 831.81,312.76 830.00,313.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<text x="848" y="290.0" text-anchor="start" font-size="14" fill="#000000"><tspan>L</tspan><tspan font-size="10.1" dy="3">0,2</tspan></text>
+<polyline points="830.00,320.00 830.00,330.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<circle cx="830" cy="330" r="4" fill="#000000" stroke="none"/>
+<polyline points="800.00,330.00 860.00,330.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<polyline points="800.00,330.00 800.00,350.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<polyline points="800.00,400.00 800.00,420.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<rect x="790" y="350.0" width="20" height="50" rx="0" fill="#FFFFFF" stroke="#000000" stroke-width="1.6"/>
+<text x="782" y="380.0" text-anchor="end" font-size="14" fill="#000000"><tspan>R</tspan><tspan font-size="10.1" dy="3">1,2</tspan></text>
+<polyline points="860.00,330.00 860.00,347.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<polyline points="860.00,403.00 860.00,420.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<polyline points="860.00,347.00 861.81,347.24 863.50,347.94 864.95,349.05 866.06,350.50 866.76,352.19 867.00,354.00 866.76,355.81 866.06,357.50 864.95,358.95 863.50,360.06 861.81,360.76 860.00,361.00 860.00,361.00 861.81,361.24 863.50,361.94 864.95,363.05 866.06,364.50 866.76,366.19 867.00,368.00 866.76,369.81 866.06,371.50 864.95,372.95 863.50,374.06 861.81,374.76 860.00,375.00 860.00,375.00 861.81,375.24 863.50,375.94 864.95,377.05 866.06,378.50 866.76,380.19 867.00,382.00 866.76,383.81 866.06,385.50 864.95,386.95 863.50,388.06 861.81,388.76 860.00,389.00 860.00,389.00 861.81,389.24 863.50,389.94 864.95,391.05 866.06,392.50 866.76,394.19 867.00,396.00 866.76,397.81 866.06,399.50 864.95,400.95 863.50,402.06 861.81,402.76 860.00,403.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<text x="878" y="380.0" text-anchor="start" font-size="14" fill="#000000"><tspan>L</tspan><tspan font-size="10.1" dy="3">1,2</tspan></text>
+<polyline points="800.00,420.00 860.00,420.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<circle cx="830" cy="420" r="4" fill="#000000" stroke="none"/>
+<polyline points="830.00,420.00 830.00,440.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<rect x="735" y="128" width="190" height="314" rx="0" fill="none" stroke="#777777" stroke-width="1" stroke-dasharray="3 3"/>
+<text x="830" y="108" text-anchor="middle" font-size="12" fill="#555555" font-style="italic"><tspan>Kontaktierung 2 (Skin-Modell)</tspan></text>
+<polyline points="830.00,440.00 830.00,509.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<polyline points="830.00,521.00 830.00,590.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<polyline points="808.00,509.00 852.00,509.00" fill="none" stroke="#000000" stroke-width="3"/>
+<polyline points="819.00,521.00 841.00,521.00" fill="none" stroke="#000000" stroke-width="6"/>
+<text x="800" y="505.0" text-anchor="end" font-size="14" fill="#000000"><tspan>+</tspan></text>
+<text x="800" y="520.0" text-anchor="end" font-size="14" fill="#000000"><tspan>Zelle 2</tspan></text>
+<text x="800" y="537.0" text-anchor="end" font-size="14" fill="#000000"><tspan>Z</tspan><tspan font-size="10.1" dy="3">Zelle,2</tspan></text>
+<circle cx="830" cy="635" r="13" fill="none" stroke="#000000" stroke-width="1.6"/>
+<polyline points="817.00,635.00 808.00,635.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<text x="804" y="633" text-anchor="end" font-size="12" fill="#444444"><tspan>Hall-Sensor</tspan></text>
+<text x="804" y="648" text-anchor="end" font-size="12" fill="#444444"><tspan>(BM2)</tspan></text>
+<polyline points="830.00,590.00 830.00,622.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<polyline points="830.00,648.00 830.00,690.00" fill="none" stroke="#000000" stroke-width="1.6"/>
+<circle cx="830" cy="690" r="4" fill="#000000" stroke="none"/>
+<rect x="910" y="445" width="170" height="140" rx="6" fill="#F4F4F4" stroke="#000000" stroke-width="1.6"/>
+<text x="1010" y="511.0" text-anchor="middle" font-size="15" fill="#000000" font-weight="bold"><tspan>Cell-EIS</tspan></text>
+<text x="1010" y="529.0" text-anchor="middle" font-size="12" fill="#444444"><tspan>TLE9010 (BM2-Cell)</tspan></text>
+<text x="918" y="465" text-anchor="start" font-size="12" fill="#444444"><tspan>F+</tspan></text>
+<polyline points="910.00,460.00 830.00,460.00" fill="none" stroke="#C0392B" stroke-width="1.8"/>
+<circle cx="830" cy="460" r="4" fill="#000000" stroke="none"/>
+<text x="918" y="493" text-anchor="start" font-size="12" fill="#444444"><tspan>S+</tspan></text>
+<polyline points="910.00,488.00 830.00,488.00" fill="none" stroke="#1F5FBF" stroke-width="1.4" stroke-dasharray="6 4"/>
+<circle cx="830" cy="488" r="4" fill="#000000" stroke="none"/>
+<text x="918" y="547" text-anchor="start" font-size="12" fill="#444444"><tspan>S−</tspan></text>
+<polyline points="910.00,542.00 830.00,542.00" fill="none" stroke="#1F5FBF" stroke-width="1.4" stroke-dasharray="6 4"/>
+<circle cx="830" cy="542" r="4" fill="#000000" stroke="none"/>
+<text x="918" y="575" text-anchor="start" font-size="12" fill="#444444"><tspan>F−</tspan></text>
+<polyline points="910.00,570.00 830.00,570.00" fill="none" stroke="#C0392B" stroke-width="1.8"/>
+<circle cx="830" cy="570" r="4" fill="#000000" stroke="none"/>
+<polyline points="40.00,738.00 80.00,738.00" fill="none" stroke="#C0392B" stroke-width="1.8"/>
+<text x="88" y="743" text-anchor="start" font-size="12" fill="#444444"><tspan>Force (Anregungsstrom)</tspan></text>
+<polyline points="260.00,738.00 300.00,738.00" fill="none" stroke="#1F5FBF" stroke-width="1.4" stroke-dasharray="6 4"/>
+<text x="308" y="743" text-anchor="start" font-size="12" fill="#444444"><tspan>Sense (Spannungsmessung)</tspan></text>
+<text x="40" y="768" text-anchor="start" font-size="12" fill="#444444"><tspan>Z</tspan><tspan font-size="8.6" dy="3">Kontakt,k</tspan><tspan dy="-3"> = R</tspan><tspan font-size="8.6" dy="3">0,k</tspan><tspan dy="-3"> + jωL</tspan><tspan font-size="8.6" dy="3">0,k</tspan><tspan dy="-3"> + (R</tspan><tspan font-size="8.6" dy="3">1,k</tspan><tspan dy="-3"> ∥ L</tspan><tspan font-size="8.6" dy="3">1,k</tspan><tspan dy="-3">) fasst Kabel, Anschraubpunkte, T1, Hall-Sensor und Rail zusammen (Plus- und Minuspfad in einem Element).</tspan></text>
+<metadata><c2pa:manifest>AAAWgmp1bWIAAAAeanVtZGMycGEAEQAQgAAAqgA4m3EDYzJwYQAAABZcanVtYgAAAEdqdW1kYzJtYQARABCAAACqADibcQN1cm46YzJwYTo4MGEwYTUyMi0yYzZlLTQzZGItOGY4My1lYjRhNGEyMmZmYjYAAAADl2p1bWIAAAApanVtZGMyYXMAEQAQgAAAqgA4m3EDYzJwYS5hc3NlcnRpb25zAAAAALxqdW1iAAAARGp1bWRjYm9yABEAEIAAAKoAOJtxE2MycGEuaW5ncmVkaWVudC52MwAAAAAYYzJzaOpB1qhCHMb4YOa1oMnpdIgAAABwY2JvcqNpZGM6Zm9ybWF0bWltYWdlL3N2Zyt4bWxqaW5zdGFuY2VJRHgseG1wOmlpZDphNzZkYzgyYS02YzMzLTQ3NTktOTIwOS0xYTU3MzAzYTYwOGNscmVsYXRpb25zaGlwaHBhcmVudE9mAAAB4mp1bWIAAABBanVtZGNib3IAEQAQgAAAqgA4m3ETYzJwYS5hY3Rpb25zLnYyAAAAABhjMnNoDs09FJOpHJqXlQW5NRzw8AAAAZljYm9yomdhY3Rpb25zgqJmYWN0aW9ua2MycGEub3BlbmVkanBhcmFtZXRlcnOha2luZ3JlZGllbnRzgaJjdXJseC1zZWxmI2p1bWJmPWMycGEuYXNzZXJ0aW9ucy9jMnBhLmluZ3JlZGllbnQudjNkaGFzaFggkCOCy5Gq3DtjR0TPtuI2Urqt/8HUQcuril9hOpxDkumkZmFjdGlvbngdY29tLmFudGhyb3BpYy5jbGF1ZGUucHJvdmlkZWRqcGFyYW1ldGVyc6F4H2NvbS5hbnRocm9waWMub3JpZ2luLWNvbmZpZGVuY2VndW5rbm93bmtkZXNjcmlwdGlvbnhmQ2xhdWRlIHByb3ZpZGVkIHRoaXMgZmlsZSBhdCB0aGUgcmVxdWVzdCBvZiBhIHVzZXIgYW5kIG1heSBoYXZlIGNyZWF0ZWQgb3IgbW9kaWZpZWQgdGhlIGZpbGUgY29udGVudHMubXNvZnR3YXJlQWdlbnShZG5hbWVmQ2xhdWRlcmFsbEFjdGlvbnNJbmNsdWRlZPUAAADIanVtYgAAAEBqdW1kY2JvcgARABCAAACqADibcRNjMnBhLmhhc2guZGF0YQAAAAAYYzJzaCdAb9EuvZMWJ52/5BUF6voAAACAY2JvcqVjYWxnZnNoYTI1NmNwYWRMAAAAAAAAAAAAAAAAZGhhc2hYIAP2RGaFygM1RQSOuWTwnZJDkSXKgx4yJ9LXmbSM7+crZG5hbWVuanVtYmYgbWFuaWZlc3RqZXhjbHVzaW9uc4GiZXN0YXJ0GUUrZmxlbmd0aBkeBAAAAj5qdW1iAAAAJ2p1bWRjMmNsABEAEIAAAKoAOJtxA2MycGEuY2xhaW0udjIAAAACD2Nib3KlY2FsZ2ZzaGEyNTZpc2lnbmF0dXJleE1zZWxmI2p1bWJmPS9jMnBhL3VybjpjMnBhOjgwYTBhNTIyLTJjNmUtNDNkYi04ZjgzLWViNGE0YTIyZmZiNi9jMnBhLnNpZ25hdHVyZWppbnN0YW5jZUlEeCx4bXA6aWlkOmQwNDQyMTM4LWM3NDMtNDU3NS04MTUxLWI1NjUwYTJlM2Y2NXJjcmVhdGVkX2Fzc2VydGlvbnODomN1cmx4LXNlbGYjanVtYmY9YzJwYS5hc3NlcnRpb25zL2MycGEuaW5ncmVkaWVudC52M2RoYXNoWCCQI4LLkarcO2NHRM+24jZSuq3/wdRBy6uKX2E6nEOS6aJjdXJseCpzZWxmI2p1bWJmPWMycGEuYXNzZXJ0aW9ucy9jMnBhLmFjdGlvbnMudjJkaGFzaFggcSvORl2tfCsoUkKaDgrr+m7hwVGSmUrfcJYetFZsMESiY3VybHgpc2VsZiNqdW1iZj1jMnBhLmFzc2VydGlvbnMvYzJwYS5oYXNoLmRhdGFkaGFzaFggrTjKe/vRfs0bIv9jEibxp0KWdNzuqpdDzEz2nkNbFel0Y2xhaW1fZ2VuZXJhdG9yX2luZm+jZG5hbWVvQW50aHJvcGljIEZpbGVzZ3ZlcnNpb25lMS4wLjBrc3BlY1ZlcnNpb25lMi40LjAAABA4anVtYgAAAChqdW1kYzJjcwARABCAAACqADibcQNjMnBhLnNpZ25hdHVyZQAAABAIY2JvctKEWQISogEmGCFZAgowggIGMIIBjaADAgECAhRA5aAK7sI50L64g/oGQgU9Z1UTADAKBggqhkjOPQQDAzBJMRcwFQYDVQQKEw5BbnRocm9waWMsIFBCQzEuMCwGA1UEAxMlQW50aHJvcGljIENvbnRlbnQgQ3JlZGVudGlhbHMgUm9vdCBDQTAeFw0yNjA4MDcxODQzNTZaFw0yODA4MDYxOTQzNTZaMEQxFzAVBgNVBAoTDkFudGhyb3BpYywgUEJDMSkwJwYDVQQDEyBBbnRocm9waWMgQ2xhdWRlIENvbnRlbnQgU2lnbmluZzBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABJh6CmvLUBgFFNU0vUKlOVtE6djd17L5SuwX0LemFisBM3dkd/3cyjxFA3Qo5S46fX0/ihY0VZ7mfb9KF703t5OjWDBWMA4GA1UdDwEB/wQEAwIHgDAVBgNVHSUEDjAMBgorBgEEAYPoXgIBMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAUzlHiBIFOZFsj+OPEz5o+nMHXXMIwCgYIKoZIzj0EAwMDZwAwZAIwMXMdFJ4BetLLVY7ORuE9noqbbAZOZn/aArXyTwFAZfKrPzxF2vPoJNf1+UCdg1XGAjBwX1zd9WGqYkqmL5SFqw1QySjr1zJfpJM9+1rdDwSPLMOPOjKuiXjoU/pUUeG9RwmhY3BhZFkNngAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPZYQJ1OSmxgoS4RRJYbqcSxUoqlzcHAczRBAoDnQ19AKdbjeqHOllnpCkewiqZZowCDqeZGXb4anH8juyly8syqTfI=</c2pa:manifest></metadata></svg>
