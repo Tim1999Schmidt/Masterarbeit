@@ -11,6 +11,7 @@
 *.asv
 Zellhalter/
 *.pdf
+!/Konsolenbefehle_MM_BM_PM.pdf
 Token.txt
 
 # Messdaten der MATLAB-GUI: werden in ..\Data\EIS-Messdaten gespeichert (ausserhalb des
