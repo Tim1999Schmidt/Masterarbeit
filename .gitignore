@@ -11,10 +11,3 @@ Zellhalter/
 *.pdf
 !/Konsolenbefehle_MM_BM_PM.pdf
 Token.txt
-
-# Messdaten der MATLAB-GUI: werden in ..\Data\EIS-Messdaten gespeichert (ausserhalb des
-# Repositorys); alte Messordner, Zips und Figures im GUI-Ordner nie versionieren
-Matlab GUI/MM_GUI/*/
-Matlab GUI/**/*.zip
-Matlab GUI/**/*.fig
-Matlab GUI/**/*_Nyquist.png
