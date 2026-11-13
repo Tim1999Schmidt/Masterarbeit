@@ -7,8 +7,6 @@
 *.cyclo
 # alte Einzel-Repositories
 *-git-alt/
-# MATLAB
-*.asv
 Zellhalter/
 *.pdf
 !/Konsolenbefehle_MM_BM_PM.pdf
