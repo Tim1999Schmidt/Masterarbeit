@@ -32,11 +32,11 @@
  *                                    OK;SCAN
  * ---- status --------------------------------------------------------------
  *   STAT  -> one line per board, then OK;STAT
- *     BM;<k>;<addr>;<online>;<status>;<err>;<u_mV>;<i_mA>;<t_tab_cdegC>;<numEis>;<progress>;<connectZ>
+ *     BM;<k>;<addr>;<online>;<status>;<err>;<u_mV>;<i_mA>;<t_tab_cdegC>;<numEis>;<progress>;<connectZ>;<imax_mA>
  *     PM;<k>;<addr>;<online>;<status>;<err>;<tset_cdegC>;<tact_cdegC>;<tpt_cdegC>;<i_mA>;<duty_permille>;<ilim_mA>;<src>
- *     MM;<eis busy>;<i2c error count>;<BM on 0x10>;<PM on 0x20>;<rail>
+ *     MM;<eis busy>;<i2c error count>;<BM on 0x10>;<PM on 0x20>;<rail>;<rail mask>
  *       (BM/PM on 0x10/0x20: 1 = a board without an assigned address answers
- *        there; rail: 1 = rail equalisation on, see RAIL)
+ *        there; rail: 1 = rail equalisation on, rail mask = cells taking part, see RAIL)
  * ---- warnings (sent by the MM on its own) ------------------------------------
  *   WARN;UDIFF;<mV>
  *       rail equalisation: the cell voltages differ by more than 50 mV, the
@@ -54,24 +54,40 @@
  *   PMGAIN;<pm>;<kp>;<ki>;<kd>    gains x1000
  *   (<pm> = 0 means all PMs)
  * ---- BM -------------------------------------------------------------------
+ *   BMIMAX;<bm>;<mA>              rail current limit 100..2500 mA (BM default 2000), checked
+ *                                 in both directions (charging and discharging): at
+ *                                 |I| >= limit with CONNECT_Z on the BM switches CONNECT_Z off
+ *                                 (error 9). Also during an EIS job. Kept by the MM (RAM) and
+ *                                 written again if a BM reports another value (BM reset).
  *   BMCLR;<bm>   BMRECAL;<bm>   BMIZERO;<bm>  (clear error / recalibrate tab
  *                                 temperature / current zero, RAM only)
  *   (<bm> = 0 means all BMs; not while an EIS job runs)
  * ---- EIS --------------------------------------------------------------------
- *   EIS;<target>;<fstart>;<fstop>;<amp>;<wave>;<avg>[;<time>[;<stack>]]
+ *   EIS;<target>;<fstart>;<fstop>;<amp>;<wave>;<avg>[;<time>[;<stack>[;<cellmode>]]]
  *       target: C<k> = cell of BM k, S = stack, ALL = all cells one after
  *       another, ALLS = all cells and then the stack
  *       fstart/fstop 0..51, amp 0..5, wave 0/1, avg 1..9, time 0..7 = measuring
  *       time 25, 50, 100 .. 3200 ms (optional, default 1 = 50 ms) (as on the BM),
  *       stack = cells on the rail for the stack measurement (S / ALLS) as bit mask,
  *       bit 0 = BM 1 ... (decimal or 0x hex, optional, default all; e.g. 0x5 = BM 1 + 3);
- *       the other BMs get CONNECT_Z = 0 during the stack sweep
+ *       the other BMs get CONNECT_Z = 0 during the stack sweep;
+ *       cellmode (optional, default 0) for the cells of C<k> / ALL / ALLS:
+ *       0 = cell measured alone (CONNECT_Z = 0 on all BMs),
+ *       1 = test mode, stack configuration: a cell selected in <stack> is measured
+ *       with the cells of <stack> on the rail (MOSFETs as for the stack sweep; <stack>
+ *       may hold only the measured cell, e.g. to charge it through the rail; for
+ *       C<k> cell k must be selected, for ALL / ALLS every cell, otherwise ERR;EIS;PARAM)
  *   ABORT
- *   RAIL[;0|1]                    rail equalisation while no EIS job runs (default 1):
- *                                 all cells in parallel (CONNECT_Z = 1) if their voltages
- *                                 differ by <= 50 mV; 0 = all CONNECT_Z = 0. -> OK;RAIL;<state>
+ *   RAIL[;0|1[;<mask>]]           rail equalisation (balancing) while no EIS job runs
+ *                                 (default 1, all cells): the cells of <mask> (bit 0 = BM 1,
+ *                                 decimal or 0x hex, default all) are connected in parallel
+ *                                 (CONNECT_Z = 1) if their voltages differ by <= 50 mV - a
+ *                                 single cell too (e.g. charging through the rail); cells not
+ *                                 in <mask> get CONNECT_Z = 0; 0 = all CONNECT_Z = 0.
+ *                                 Without <mask> the mask stays. -> OK;RAIL;<state>;<mask>
  *   Lines of a running job (see eis_sequencer.h):
- *     EISBEGIN;<target>;<fstart>;<fstop>;<amp>;<wave>;<avg>;<time>;<stack mask>
+ *     EISBEGIN;<target>;<fstart>;<fstop>;<amp>;<wave>;<avg>;<time>;<stack mask>;<on rail>
+ *       (on rail = 1: this cell is measured with the cells of <stack mask> on the rail)
  *     EISCELL;<target>;<bm>;<u_mV>;<t_tab_cdegC>      cell(s) involved
  *     PROG;<target>;<frequency index>
  *     RES;<target>;<index>;<f_cHz>;<re_uOhm>;<im_uOhm>

@@ -23,7 +23,7 @@
 #define NO_BM                     0xFFu
 #define RES_LINE_TX_RESERVE       64u     /* free TX bytes needed before the next RES line */
 #define RAIL_CHECK_PERIOD_MS    1000u     /* no job: how often the rail connection is checked */
-#define RAIL_MIN_CELLS             2u     /* fewer cells: nothing to equalise */
+#define RAIL_MIN_CELLS             1u     /* a single selected cell is connected too (charging through the rail) */
 #define END_LINE_LEN              64u     /* "EISEND;C8;ERR;CONNECTZ;BM8;BM_ERR9" */
 
 typedef char target_name_has_one_digit[(MM_MAX_BM <= 9u) ? 1 : -1];
@@ -46,11 +46,13 @@ static uint8_t    targets[MM_MAX_BM + 1u];   /* BM index of a cell, or STACK_TAR
 static uint8_t    numTargets, targetPos, targetsOk;
 static uint8_t    measBm;                    /* BM doing the current sweep */
 static uint8_t    isStack;
+static uint8_t    onRail;                    /* current target: cells of stackMask on the rail */
 static char       name[TARGET_NAME_LEN];
 static uint32_t   tick, lastProgressTick;
 static uint8_t    lastProgress, pollFails, readIndex, readRetries;
 static uint8_t    abortRequest;
 static uint8_t    railAuto = 1u;             /* no job: cells in parallel on the rail */
+static uint8_t    railMask = EIS_STACK_ALL;  /* cells taking part in the balancing, bit k-1 = BM k */
 static uint8_t    railUdiffReported;
 static uint32_t   railTick;
 
@@ -143,10 +145,16 @@ static const char *ConnectFailReason(uint8_t i)
     return Boards_GetBm(i)->online ? "CONNECTZ" : "OFFLINE";
 }
 
-/* BM takes part in the rail equalisation: answers, no overcurrent, no sweep */
+/* BM can be switched by the rail equalisation: answers, no overcurrent, no sweep */
 static uint8_t RailCandidate(const BmData_t *b)
 {
     return (b->online && b->errorCode != BM_ERR_OVERCURRENT && (b->status & BM_ST_EIS_BUSY) == 0u) ? 1u : 0u;
+}
+
+/* BM i is selected for the balancing */
+static uint8_t InRailMask(uint8_t i)
+{
+    return ((railMask >> i) & 1u) ? 1u : 0u;
 }
 
 /* No EIS job: all cells in parallel on the rail, so that small voltage
@@ -164,10 +172,18 @@ static void RailIdle(void)
         return;
     railTick = HAL_GetTick();
 
+    /* cells deselected for the balancing: off the rail */
     for (i = 0u; i < NumBm(); i++)
     {
         const BmData_t *b = Boards_GetBm(i);
-        if (!RailCandidate(b))
+        if (!InRailMask(i) && b->online && (b->status & BM_ST_CONNECT_Z) != 0u)
+            (void)Boards_BmSetConnectZ(i, BM_CONNECT_Z_OFF);
+    }
+
+    for (i = 0u; i < NumBm(); i++)
+    {
+        const BmData_t *b = Boards_GetBm(i);
+        if (!InRailMask(i) || !RailCandidate(b))
             continue;
         if (b->uCellMv < uMin) uMin = b->uCellMv;
         if (b->uCellMv > uMax) uMax = b->uCellMv;
@@ -186,7 +202,7 @@ static void RailIdle(void)
     for (i = 0u; i < NumBm(); i++)
     {
         const BmData_t *b = Boards_GetBm(i);
-        if (RailCandidate(b) && (b->status & BM_ST_CONNECT_Z) == 0u)
+        if (InRailMask(i) && RailCandidate(b) && (b->status & BM_ST_CONNECT_Z) == 0u)
             (void)Boards_BmSetConnectZ(i, BM_CONNECT_Z_ON);
     }
 }
@@ -202,7 +218,7 @@ static void ReportCell(uint8_t bmIndex)
  * errorDetail = error code reported by that BM (0: none) */
 static void EndTarget(const char *errorReason, uint8_t bm, int errorDetail)
 {
-    if (isStack && !railAuto)
+    if (onRail && !railAuto)
         (void)ConnectAll(BM_CONNECT_Z_OFF);           /* rail equalisation off: do not leave the cells in parallel */
 
     if (errorReason == 0)
@@ -241,12 +257,14 @@ static uint8_t BeginTarget(void)
         return 0u;
 
     isStack = (targets[targetPos] == STACK_TARGET) ? 1u : 0u;
+    onRail  = (isStack || (job.cellMode == EIS_CELL_ON_RAIL && InStack(targets[targetPos]))) ? 1u : 0u;
     measBm  = NO_BM;
     SetName(targets[targetPos]);
-    (void)HostComm_SendLine("EISBEGIN;%s;%u;%u;%u;%u;%u;%u;%u", name, job.fStart, job.fStop,
-                            job.amplitude, job.waveform, job.averages, job.measTime, job.stackMask);
+    (void)HostComm_SendLine("EISBEGIN;%s;%u;%u;%u;%u;%u;%u;%u;%u", name, job.fStart, job.fStop,
+                            job.amplitude, job.waveform, job.averages, job.measTime, job.stackMask,
+                            (!isStack && onRail) ? EIS_CELL_ON_RAIL : EIS_CELL_ALONE);
 
-    if (!isStack)
+    if (!onRail)
     {
         /* a cell is measured alone: CONNECT_Z off on all BMs (BMs that do not
          * answer are skipped); only the measured BM must confirm it (checked
@@ -259,7 +277,7 @@ static uint8_t BeginTarget(void)
         return 1u;
     }
 
-    /* stack: all BMs online, the selected cells at (almost) the same voltage */
+    /* stack / cell on the rail: all BMs online, the selected cells at (almost) the same voltage */
     {
         uint16_t uMin = UINT16_MAX, uMax = 0u;
         for (i = 0u; i < NumBm(); i++)
@@ -283,12 +301,17 @@ static uint8_t BeginTarget(void)
             return 1u;
         }
     }
-    measBm = FindStackBm();
-    if (measBm == NO_BM)
+    if (isStack)
     {
-        EndTarget("NOSTACK", NO_BM, 0);
-        return 1u;
+        measBm = FindStackBm();
+        if (measBm == NO_BM)
+        {
+            EndTarget("NOSTACK", NO_BM, 0);
+            return 1u;
+        }
     }
+    else
+        measBm = targets[targetPos];                /* cell on the rail: swept with its own cell chip */
     i = ConnectStack();
     if (i != NO_BM)
     {
@@ -321,8 +344,18 @@ EisSeqResult_t EisSeq_Start(const EisJob_t *j)
         j->amplitude >= BM_AMPLITUDE_COUNT || j->waveform > BM_WAVE_RECTANGLE ||
         j->averages < BM_AVERAGES_MIN || j->averages > BM_AVERAGES_MAX ||
         j->measTime >= BM_MEAS_TIME_COUNT ||
-        (j->type == EIS_JOB_CELL && j->cellBm >= NumBm()))
+        (j->type == EIS_JOB_CELL && j->cellBm >= NumBm()) || j->cellMode > EIS_CELL_ON_RAIL)
         return EIS_SEQ_ERR_PARAM;
+    if (j->cellMode == EIS_CELL_ON_RAIL && j->type != EIS_JOB_STACK)
+    {
+        const uint8_t mask = j->stackMask & AllBmMask();
+        if (mask == 0u)
+            return EIS_SEQ_ERR_PARAM;               /* stack configuration without a cell on the rail */
+        if (j->type == EIS_JOB_CELL && ((mask >> j->cellBm) & 1u) == 0u)
+            return EIS_SEQ_ERR_PARAM;               /* measured cell not selected for the rail */
+        if (j->type != EIS_JOB_CELL && mask != AllBmMask())
+            return EIS_SEQ_ERR_PARAM;               /* ALL / ALLS: every cell in the stack configuration */
+    }
     if ((j->type == EIS_JOB_STACK || j->type == EIS_JOB_ALL_CELLS_STACK) &&
         (j->stackMask & AllBmMask()) == 0u)
         return EIS_SEQ_ERR_PARAM;                   /* stack without a cell on the rail */
@@ -363,6 +396,14 @@ void EisSeq_SetRailAuto(uint8_t on)
 
 uint8_t EisSeq_GetRailAuto(void) { return railAuto; }
 
+void EisSeq_SetRailMask(uint8_t mask)
+{
+    railMask = mask;
+    railTick = HAL_GetTick() - RAIL_CHECK_PERIOD_MS;   /* apply at once */
+}
+
+uint8_t EisSeq_GetRailMask(void) { return (uint8_t)(railMask & AllBmMask()); }
+
 void EisSeq_Process(void)
 {
     if (state == ST_IDLE)
@@ -397,8 +438,8 @@ void EisSeq_Process(void)
         uint8_t failed;
         if ((HAL_GetTick() - tick) < CONNECT_SETTLE_MS)
             break;
-        if (isStack)
-            failed = CheckConnectStack();                   /* stack: selected cells on the rail, others off */
+        if (onRail)
+            failed = CheckConnectStack();                   /* stack / cell on the rail: selected cells on, others off */
         else
             failed = CheckConnect(measBm, BM_CONNECT_Z_OFF) ? NO_BM : measBm;
         if (failed != NO_BM)

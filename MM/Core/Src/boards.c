@@ -15,6 +15,7 @@
 #define BITS_PER_BYTE    8u
 
 static BmData_t bm[MM_MAX_BM];
+static uint16_t bmRailLimitMa[MM_MAX_BM];     /* setpoint of RAIL_I_MAX per BM */
 static PmData_t pm[MM_MAX_PM];
 static uint32_t lastPollTick;
 static uint8_t  unassignedBm, unassignedPm;   /* a board answers on its unassigned address */
@@ -89,11 +90,25 @@ static uint8_t ForwardSource(uint8_t i)
     }
 }
 
+/* reads RAIL_I_MAX of BM i and writes the setpoint again if the BM has another value */
+static void KeepRailLimit(uint8_t i)
+{
+    uint8_t r[sizeof(uint16_t)];
+    if (!bm[i].online || !I2cBus_Read(BmAddr(i), BM_REG_RAIL_I_MAX, r, sizeof(r)))
+        return;
+    bm[i].railIMaxMa = I2cBus_GetU16(r);
+    if (bm[i].railIMaxMa != bmRailLimitMa[i])
+        (void)I2cBus_WriteU16(BmAddr(i), BM_REG_RAIL_I_MAX, bmRailLimitMa[i]);
+}
+
 /* ---- public ------------------------------------------------------------------- */
 void Boards_Init(void)
 {
+    uint8_t i;
     memset(bm, 0, sizeof(bm));
     memset(pm, 0, sizeof(pm));
+    for (i = 0u; i < MM_MAX_BM; i++)
+        bmRailLimitMa[i] = BM_RAIL_I_MAX_DEFAULT_MA;
     lastPollTick = HAL_GetTick() - BOARDS_POLL_PERIOD_MS;   /* first poll right away */
 }
 
@@ -107,7 +122,10 @@ void Boards_Process(void)
     lastPollTick = HAL_GetTick();
 
     for (i = 0u; i < c->numBm; i++)
-        (void)Boards_RefreshBm(i);
+    {
+        if (Boards_RefreshBm(i))
+            KeepRailLimit(i);
+    }
     for (i = 0u; i < c->numPm; i++)
     {
         if (ReadPm(i))
@@ -160,6 +178,14 @@ uint8_t Boards_BmWriteEisParams(uint8_t i, const uint8_t *params)
 {
     return I2cBus_Write(BmAddr(i), BM_EIS_PARAM_FIRST, params, BM_EIS_PARAM_LEN);
 }
+
+uint8_t Boards_BmSetRailCurrentLimit(uint8_t i, uint16_t limitMa)
+{
+    bmRailLimitMa[i] = limitMa;
+    return I2cBus_WriteU16(BmAddr(i), BM_REG_RAIL_I_MAX, limitMa);
+}
+
+uint16_t Boards_BmGetRailCurrentSetpoint(uint8_t i) { return bmRailLimitMa[i]; }
 
 uint8_t Boards_BmReadResult(uint8_t i, uint8_t freqIndex, uint8_t *valid,
                             uint32_t *freqCentiHz, int32_t *reUOhm, int32_t *imUOhm)

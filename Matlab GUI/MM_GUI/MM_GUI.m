@@ -20,14 +20,15 @@ function MM_GUI()
 %     Zellhalter-GUI, Nyquist-Plot
 %   - Betriebsart (Umschalter oben rechts im Verbindungsfeld):
 %       Manuell   : Temperaturregelung und EIS-Messung von Hand (wie bisher)
-%       Automatik : Temperaturprofil je Zelle; sobald alle Zellen ihre Solltemperatur
-%                   lange genug halten (Standard: Abweichung < 0,5 K fuer 5 min), laeuft die
-%                   EIS-Messung mit den Einstellungen des EIS-Panels, danach folgt der naechste
-%                   Profilschritt. Nach dem letzten Schritt und bei Abbruch werden die Zellen
-%                   auf 25 degC temperiert, erst dann wird die Temperaturregelung ausgeschaltet.
-%                   Profil grafisch (Tabelle/Diagramm) oder als Text einstellbar. Welche Zellen
-%                   temperiert werden, folgt aus "Messung" im EIS-Panel (Einzelzelle -> nur
-%                   diese Zelle; Stack / alle Zellen (+ Stack) -> alle Zellen).
+%       Automatik : Schrittliste mit den Schritttypen Temperatur (Sollwerte je Zelle, weiter
+%                   erst, wenn alle temperierten Zellen die Haltezeit lang innerhalb der
+%                   Toleranz liegen, Standard: < 0,5 K fuer 5 min), Wartezeit, EIS-Messung
+%                   (Ziel je Schritt, Einstellungen aus dem EIS-Panel) und Wiederholen (Block
+%                   frueherer Schritte n-mal). Am Ende und bei Abbruch werden die temperierten
+%                   Zellen auf 25 degC temperiert, erst dann wird die Regelung ausgeschaltet.
+%                   Schrittliste als Tabelle oder Text einstellbar; alte Temperaturprofile werden
+%                   beim Laden umgewandelt.
+%   - Intervallmessung (nur Manuell): EIS-Messung in festen Zeitabstaenden, n-mal oder bis Abbruch
 %
 % Protokoll: siehe MM/Core/Inc/host_comm.h
 %
@@ -49,6 +50,8 @@ function MM_GUI()
     DEFAULT_STOP_INDEX   = NUM_FREQ - 1;
     MM_FIELD_NOADDR_BM   = 4;          % MM;busy;i2cErr;<BM auf 0x10>;<PM auf 0x20>
     MM_FIELD_NOADDR_PM   = 5;
+    MM_FIELD_RAIL_MASK   = 7;          % MM;...;<rail>;<rail mask> (Zellen im Balancing, Bit k-1 = Zelle k)
+    BALANCE_RESEND_S     = 3;          % MM meldet eine andere Maske: fruehestens nach dieser Zeit erneut senden
     DEFAULT_MEAS_TIME    = 2;          % 50 ms (Listeneintrag) = Bedingung der Datenblatt-Genauigkeit
     DEFAULT_AMPLITUDE    = 6;          % 500 mA (Listeneintrag); unter 200 mA misst der TLE9010 Re ~1.7 % zu hoch
     DEFAULT_TSET_DEGC    = 25;
@@ -65,7 +68,15 @@ function MM_GUI()
     SOURCE_ITEM_OWN_TAB  = 2;
     PM_SOURCE_PT1000     = 0;          % Code im Protokoll (PMSRC / CFG;SRC); Tab-Sensor = Nummer der Zelle
 
-    % Automatik (Temperaturprofil + EIS je Temperaturschritt)
+    % Testmodus "Stackkonfiguration für Einzelzellmessung übernehmen" (nur Manuell): die MOSFETs
+    % werden wie bei der Stackmessung geschaltet (angehakte Zellen an der Rail, auch nur die
+    % gemessene Zelle allein, z. B. zum Laden ueber die Rail), Feld <cellmode> des EIS-Befehls
+    CELL_MODE_ALONE           = 0;      % Standard: Zelle vom Stack getrennt
+    CELL_MODE_ON_RAIL         = 1;
+    CELL_RAIL_TEXT            = 'Stackkonfiguration für Einzelzellmessung übernehmen';
+    CELL_RAIL_LABEL           = 'an Rail';   % Zusatz in Log, Legende und Messobjekt
+    EISBEGIN_FIELD_ON_RAIL    = 10;     % EISBEGIN;target;...;stackMask;onRail
+    % Automatik (Schrittliste: Temperatur, Wartezeit, EIS-Messung, Wiederholen)
     MODE_MANUAL_TEXT          = 'Manuell';
     MODE_AUTO_TEXT            = 'Automatik';
     AUTO_TOL_DEFAULT_K        = 0.5;    % zulaessige Abweichung von der Solltemperatur
@@ -78,7 +89,25 @@ function MM_GUI()
     AUTO_CRITERION_TAB        = 1;      % Listeneintrag: Temperatur am Zellableiter (BM)
     AUTO_CRITERION_PM         = 2;      % Listeneintrag: Istwert der PM-Regelung
     AUTO_LOG_FILE             = 'Ablauf.txt';          % im Ordner des Automatiklaufs
-    AUTO_PROFILE_FILE         = 'Temperaturprofil.txt';
+    AUTO_PROFILE_FILE         = 'Schrittliste.txt';
+    % Schritttypen der Automatik (Code in autoProgram, Text in Tabelle / Liste)
+    STEP_TEMP                 = 'TEMP';
+    STEP_WAIT                 = 'WAIT';
+    STEP_EIS                  = 'EIS';
+    STEP_REPEAT               = 'REPEAT';
+    STEP_TYPES                = {STEP_TEMP, STEP_WAIT, STEP_EIS, STEP_REPEAT};
+    STEP_TYPE_TEXT            = {'Temperatur', 'Wartezeit', 'EIS-Messung', 'Wiederholen'};
+    STEP_KEYWORD_PATTERN      = '^\s*(\d+\s*[.):]\s*)?(temperatur|temp|t|warten|wartezeit|pause|eis|messung|eis-messung|wiederholen|wiederholung)\s*:';
+    AUTO_WAIT_DEFAULT_MIN     = 5;
+    AUTO_WAIT_MAX_MIN         = 7 * 24 * 60;   % eine Woche
+    AUTO_REPEAT_DEFAULT       = 2;
+    AUTO_REPEAT_MAX           = 1000;
+    MINUTES_PER_HOUR          = 60;
+    PROGRAM_SUMMARY_MAX_STEPS = 6;      % so viele Schritte zeigt die Kurzuebersicht
+    % Intervallmessung (nur Manuell)
+    INTERVAL_DEFAULT_MIN      = 10;
+    INTERVAL_COUNT_ENDLESS    = 0;      % Anzahl 0 = bis "Abbrechen"
+    INTERVAL_TICK_S           = 1;
     AUTO_ANSWER_REPEAT        = 'Wiederholen';
     AUTO_ANSWER_ABORT         = 'Automatik abbrechen';
     AUTO_ANSWER_OFF_NOW       = 'Sofort ausschalten';
@@ -86,11 +115,7 @@ function MM_GUI()
     SECONDS_PER_MINUTE        = 60;
     PROFILE_T_MIN_DEGC        = 0;      % Sollwertbereich des PM (pm_regs.h: 0..5000 cdegC)
     PROFILE_T_MAX_DEGC        = 50;
-    PROFILE_DRAG_STEP_K       = 0.5;    % Raster beim Ziehen eines Punkts im Profildiagramm
-    PROFILE_SUMMARY_MAX_STEPS = 6;      % so viele Temperaturen zeigt die Kurzuebersicht je Zelle
-    PROFILE_FIG_SIZE_PX       = [1000 640];
-    PROFILE_LINE_WIDTH        = 1.5;
-    PROFILE_MARKER_SIZE       = 8;
+    PROFILE_FIG_SIZE_PX       = [1100 640];
     PROFILE_SEL_MARK          = ' ◄';   % Zusatz am Zeilennamen des markierten Schritts
     PROFILE_INSERT_BEFORE     = -1;     % Richtung fuer profileInsertStep / profileMoveStep
     PROFILE_INSERT_AFTER      = 1;
@@ -112,7 +137,9 @@ function MM_GUI()
         'tTab',    'T Tab [°C]';
         'eis',     'EIS-Chips';
         'conz',    'CONNECT_Z';
+        'railLimit', 'Überstromgrenze Rail [A]';
         'stackRail', 'Stackmessung: an Rail';
+        'balance', 'Balancing (ohne Messung)';
         '#PM',     'PM - Temperaturregelung';
         'pmAddr',  'Adresse';
         'pmState', 'Zustand';
@@ -134,6 +161,12 @@ function MM_GUI()
     COLOR_STATE_ERROR    = [1.00 0.82 0.82];
     COLOR_STATE_OFFLINE  = [0.85 0.85 0.85];
     COLOR_NO_BOARD       = [0.93 0.93 0.93];   % Zelle ohne BM bzw. PM
+    % Ueberstromgrenze an der Rail je BM (Betrag, Laden und Entladen; BMIMAX, nur im RAM des BM)
+    RAIL_LIMIT_DEFAULT_A = 2.0;        % Standard des BM nach Reset
+    RAIL_LIMIT_MIN_A     = 0.1;
+    RAIL_LIMIT_MAX_A     = 2.5;        % unter dem Messbereich des BM (ca. +-2,75 A)
+    RAIL_LIMIT_RESEND_S  = 3;          % BM meldet einen anderen Wert: fruehestens nach dieser Zeit erneut senden
+    STAT_BM_FIELD_IMAX   = 13;         % BM;k;...;connectZ;imax_mA
 
     % STATUS-Bits (bm_regs.h / pm_regs.h)
     BM_ST_EIS_BUSY = 1;  BM_ST_ERROR = 4;  BM_ST_TEMP_VALID = 8;
@@ -142,7 +175,7 @@ function MM_GUI()
 
     BM_ERROR_TEXT = {'kein Fehler', 'EIS-Parameter', 'beschaeftigt', 'EIS-Kommunikation', ...
                      'CONNECT_Z passt nicht', 'Tab-Temperatursensor', 'TLE9015 ERRQ', 'Flash', ...
-                     'EIS-ADC uebersteuert', 'Ueberstrom an der Rail (CONNECT_Z aus)'};
+                     'EIS-ADC uebersteuert', 'Ueberstrom an der Rail, Laden oder Entladen (CONNECT_Z aus)'};
     PM_ERROR_TEXT = {'kein Fehler', 'Ueberstrom beim Start', 'Ueberstrom im Betrieb', ...
                      'Plausibilitaet (Regelung)', 'PT1000 unplausibel', 'externe Temperatur fehlt', ...
                      'kein Peltier angeschlossen', 'Temperaturkalibrierung'};
@@ -186,12 +219,18 @@ function MM_GUI()
     gridH      = struct();                   % Handles der Zellenuebersicht: gridH.<Zeile>(Zelle)
     numCells   = 0;                          % Spalten der Zellenuebersicht
     stackSel   = true(1, 0);                 % Zelle k bei der Stackmessung an der Rail (Haken)
+    railLimitA = zeros(1, 0);                % Ueberstromgrenze je BM [A] (Sollwert der GUI)
+    railLimitSent = NaT(1, 0);               % Zeitpunkt des letzten BMIMAX je BM
+    balanceSel = true(1, 0);                 % Zelle k nimmt am Balancing teil (ohne Messung an der Rail)
+    balanceSent = NaT;                       % Zeitpunkt des letzten RAIL-Befehls
     bmLast     = BM_LAST_EMPTY;              % letzte Messwerte je BM (Datei, Automatik)
     pmLast     = PM_LAST_EMPTY;
     mmBusy     = false;                      % MM fuehrt gerade einen EIS-Auftrag aus
-    autoProfile = zeros(0, 0);               % Temperaturprofil [degC]: Zeile = Schritt, Spalte = Zelle
+    autoProgram = struct('type', {}, 'temps', {}, 'minutes', {}, 'target', {}, 'from', {}, 'count', {});   % Schrittliste
     autoRun    = struct('state', 'IDLE', 'folder', '');   % laufende Automatik (Zustaende siehe autoTick)
     autoTimer  = [];
+    intervalRun = struct('active', false, 'measuring', false);   % laufende Intervallmessung
+    intervalTimer = [];
     profileEdit = struct('fig', []);         % Fenster des Profileditors
     meas       = containers.Map();           % laufende Messung je Ziel ('C1', 'S', ...)
     dataFolder = DEFAULT_DATA_FOLDER;
@@ -280,11 +319,11 @@ function MM_GUI()
         'Callback', @(~, ~) pmCommand('PMRECAL'));
 
     % Automatik: liegt an derselben Stelle wie die Temperaturregelung (nur eines ist sichtbar)
-    pAuto = uipanel(fig, 'Title', 'Automatik: Temperaturprofil + EIS-Messung', 'Units', 'normalized', ...
+    pAuto = uipanel(fig, 'Title', 'Automatik: Schrittliste (Temperatur, Wartezeit, EIS-Messung, Wiederholen)', 'Units', 'normalized', ...
         'Position', get(pTemp, 'Position'), 'Visible', 'off');
-    uicontrol(pAuto, 'Style', 'pushbutton', 'String', 'Profil bearbeiten ...', 'Units', 'normalized', ...
+    uicontrol(pAuto, 'Style', 'pushbutton', 'String', 'Schritte bearbeiten ...', 'Units', 'normalized', ...
         'Position', [0.01 0.68 0.18 0.26], 'Callback', @(~, ~) openProfileEditor());
-    hAutoSummary = uicontrol(pAuto, 'Style', 'text', 'String', 'kein Profil', 'Units', 'normalized', ...
+    hAutoSummary = uicontrol(pAuto, 'Style', 'text', 'String', 'keine Schrittliste', 'Units', 'normalized', ...
         'Position', [0.20 0.68 0.79 0.22], 'HorizontalAlignment', 'left');
     uicontrol(pAuto, 'Style', 'text', 'String', 'Toleranz [K]:', 'Units', 'normalized', 'Position', [0.01 0.38 0.11 0.22], 'HorizontalAlignment', 'left');
     hAutoTol = uicontrol(pAuto, 'Style', 'edit', 'String', num2str(AUTO_TOL_DEFAULT_K), 'Units', 'normalized', ...
@@ -299,9 +338,8 @@ function MM_GUI()
                  'T Tab = Sensor am Zellableiter (BM), T Ist = Regelgröße des PM']));
     hAutoHint = uicontrol(pAuto, 'Style', 'text', 'String', 'Temperiert: -', 'Units', 'normalized', ...
         'Position', [0.76 0.38 0.23 0.22], 'HorizontalAlignment', 'left', 'ForegroundColor', [0.4 0.4 0.4], ...
-        'TooltipString', sprintf(['Welche Zellen temperiert werden, folgt aus "Messung" im EIS-Panel:\n' ...
-                                  'eine Zelle -> nur diese Zelle (die anderen PMs bleiben unverändert),\n' ...
-                                  'Stack / alle Zellen / alle Zellen + Stack -> alle Zellen']));
+        'TooltipString', sprintf(['Zellen mit einer Vorgabe in einem Temperaturschritt.\n' ...
+                                  'Die PMs der übrigen Zellen bleiben unverändert.']));
     hAutoStart = uicontrol(pAuto, 'Style', 'pushbutton', 'String', 'Automatik starten', 'Units', 'normalized', ...
         'Position', [0.01 0.06 0.19 0.27], 'FontWeight', 'bold', 'Callback', @(~, ~) startAuto());
     hAutoStop = uicontrol(pAuto, 'Style', 'pushbutton', 'String', 'Automatik abbrechen', 'Units', 'normalized', ...
@@ -318,7 +356,7 @@ function MM_GUI()
             'Position', [0.01 0.86 - (row - 1) * LABEL_ROW_STEP 0.15 0.1], 'HorizontalAlignment', 'left');
     end
     hTarget = uicontrol(pEis, 'Style', 'popupmenu', 'String', {'Zelle 1'}, 'Units', 'normalized', 'Position', [0.16 0.86 0.26 0.11], ...
-        'Callback', @(~, ~) updateAutoHint());          % bestimmt auch, welche Zellen die Automatik temperiert
+        'Callback', @(~, ~) updateAutoHint());
     hFstart = uicontrol(pEis, 'Style', 'popupmenu', 'String', FREQ_TEXT, 'Value', DEFAULT_START_INDEX + 1, 'Units', 'normalized', 'Position', [0.16 0.73 0.26 0.11]);
     hFstop  = uicontrol(pEis, 'Style', 'popupmenu', 'String', FREQ_TEXT, 'Value', DEFAULT_STOP_INDEX + 1, 'Units', 'normalized', 'Position', [0.16 0.60 0.26 0.11]);
     hAmp    = uicontrol(pEis, 'Style', 'popupmenu', 'String', AMPLITUDE_TEXT, 'Value', DEFAULT_AMPLITUDE, 'Units', 'normalized', 'Position', [0.16 0.47 0.26 0.11]);
@@ -340,10 +378,36 @@ function MM_GUI()
         'Units', 'normalized', 'Position', [0.56 0.47 0.2 0.11], 'TooltipString', ...
         sprintf(['Messdauer je Einzelmessung und Frequenz.\nUnterhalb von ca. 60 Hz verlängert der TLE9010 ' ...
                  'die Messung automatisch auf mindestens 3 Perioden.\nDie Datenblatt-Genauigkeit gilt ab 50 ms.']));
+    hCellRail = uicontrol(pEis, 'Style', 'checkbox', 'String', CELL_RAIL_TEXT, 'Value', 0, ...
+        'Units', 'normalized', 'Position', [0.45 0.37 0.54 0.09], 'TooltipString', ...
+        sprintf(['Testmodus, nur im Modus Manuell:\n' ...
+                 'Einzelzellen werden NICHT vom Stack getrennt, die MOSFETs werden wie bei der\n' ...
+                 'Stackmessung geschaltet: an der Rail sind die Zellen, die in der Zellenübersicht\n' ...
+                 'bei "Stackmessung: an Rail" angehakt sind (Spannungsdifferenz max. 50 mV).\n' ...
+                 'Die gemessene Zelle muss angehakt sein; sie darf auch allein angehakt sein,\n' ...
+                 'z. B. um sie während der Messung über die Rail zu laden\n' ...
+                 '(jedes BM trennt die Zelle bei |I| >= "Überstromgrenze Rail" in der Zellenübersicht).\n' ...
+                 'Sind weitere Zellen angehakt, fließt ein Teil des Anregungsstroms in diese.\n' ...
+                 'Bei "alle Zellen" / "alle Zellen + Stack" müssen alle Zellen angehakt sein.\n' ...
+                 'Dateiname mit Zusatz "_Rail".']));
     hStart = uicontrol(pEis, 'Style', 'pushbutton', 'String', 'Messung starten', 'Units', 'normalized', 'Position', [0.45 0.22 0.26 0.14], ...
         'FontWeight', 'bold', 'Callback', @(~, ~) startEis());
     hAbort = uicontrol(pEis, 'Style', 'pushbutton', 'String', 'Abbrechen', 'Units', 'normalized', 'Position', [0.73 0.22 0.26 0.14], ...
-        'Enable', 'off', 'Callback', @(~, ~) sendCommand('ABORT'));
+        'Enable', 'off', 'Callback', @(~, ~) onEisAbortPressed());
+    % Intervallmessung (nur Manuell): Messung von Start zu Start alle <min>, <Anzahl>-mal (0 = bis Abbrechen)
+    hIntEnable = uicontrol(pEis, 'Style', 'checkbox', 'String', 'Intervall alle', 'Value', 0, 'Units', 'normalized', ...
+        'Position', [0.45 0.145 0.13 0.07], 'TooltipString', ...
+        sprintf(['Nur im Modus Manuell: "Messung starten" misst wiederholt in festen Zeitabständen\n' ...
+                 '(von Start zu Start; dauert eine Messung länger, folgt die nächste direkt danach).\n' ...
+                 'Alle Messungen landen in einem Ordner <Dateiname>_Intervall_<Zeit>. "Abbrechen" beendet die Reihe.']));
+    hIntMin = uicontrol(pEis, 'Style', 'edit', 'String', num2str(INTERVAL_DEFAULT_MIN), 'Units', 'normalized', ...
+        'Position', [0.58 0.145 0.06 0.07], 'TooltipString', 'Intervall in Minuten');
+    uicontrol(pEis, 'Style', 'text', 'String', 'min, Anzahl:', 'Units', 'normalized', ...
+        'Position', [0.645 0.145 0.10 0.06], 'HorizontalAlignment', 'left');
+    hIntCount = uicontrol(pEis, 'Style', 'edit', 'String', num2str(INTERVAL_COUNT_ENDLESS), 'Units', 'normalized', ...
+        'Position', [0.75 0.145 0.06 0.07], 'TooltipString', 'Zahl der Messungen, 0 = bis "Abbrechen"');
+    uicontrol(pEis, 'Style', 'text', 'String', '(0 = bis Abbrechen)', 'Units', 'normalized', ...
+        'Position', [0.815 0.145 0.18 0.06], 'HorizontalAlignment', 'left');
     hProgress = uicontrol(pEis, 'Style', 'text', 'String', 'keine Messung aktiv', 'Units', 'normalized', ...
         'Position', [0.01 0.02 0.98 0.12], 'HorizontalAlignment', 'left', 'FontWeight', 'bold');
 
@@ -363,6 +427,12 @@ function MM_GUI()
                        hFilename, hComment, hAutoTol, hAutoHold, hAutoCrit];
     autoTimer = timer('ExecutionMode', 'fixedSpacing', 'Period', AUTO_TICK_S, 'BusyMode', 'drop', ...
                       'TimerFcn', @(~, ~) autoTick());
+    % waehrend einer Intervallmessung gesperrt: Einstellungen der Messreihe und die Betriebsart
+    intervalLockHandles = [hModeManual, hModeAuto, hBmAddr, hPmAddr, hListApply, hListSave, hScan, ...
+                           hTarget, hFstart, hFstop, hAmp, hWave, hAvg, hMeasTime, hFolder, hFolderBtn, ...
+                           hFilename, hComment, hCellRail, hIntEnable, hIntMin, hIntCount];
+    intervalTimer = timer('ExecutionMode', 'fixedSpacing', 'Period', INTERVAL_TICK_S, 'BusyMode', 'drop', ...
+                          'TimerFcn', @(~, ~) intervalTick());
 
     refreshPorts();
     setConnectedUi(false);
@@ -434,6 +504,8 @@ function MM_GUI()
     end
 
     function disconnect()
+        intervalFinish(sprintf('Intervallmessung beendet (Verbindung getrennt) nach %d Messung(en)', ...
+                               intervalDoneCount()));
         if ~isempty(statTimer) && isvalid(statTimer)
             stop(statTimer);
             delete(statTimer);
@@ -466,6 +538,10 @@ function MM_GUI()
         if ~isempty(autoTimer) && isvalid(autoTimer)
             stop(autoTimer);
             delete(autoTimer);
+        end
+        if ~isempty(intervalTimer) && isvalid(intervalTimer)
+            stop(intervalTimer);
+            delete(intervalTimer);
         end
         if ~isempty(profileEdit.fig) && isvalid(profileEdit.fig)
             delete(profileEdit.fig);
@@ -529,7 +605,7 @@ function MM_GUI()
     end
 
     function onBmStatus(f)
-        % BM;k;addr;online;status;err;u_mV;i_mA;t_cdegC;numEis;progress;connectZ
+        % BM;k;addr;online;status;err;u_mV;i_mA;t_cdegC;numEis;progress;connectZ;imax_mA
         k = str2double(f(2));
         if k > numCells
             return;                                % Uebersicht noch nicht aufgebaut
@@ -560,6 +636,7 @@ function MM_GUI()
         setGrid('tTab', k, tText);
         setGrid('eis',  k, eisText);
         setGrid('conz', k, onOffText(str2double(f(12)) == 1));
+        checkRailLimit(k, f);
     end
 
     function onPmStatus(f)
@@ -601,6 +678,7 @@ function MM_GUI()
                 reason = char(f(3));
             end
             autoOnEisRejected(reason);
+            intervalOnDone(false);
         end
     end
 
@@ -611,7 +689,7 @@ function MM_GUI()
     end
 
     function onMmStatus(f)
-        % MM;eisBusy;i2cErrors;bmOnDefaultAddr;pmOnDefaultAddr
+        % MM;eisBusy;i2cErrors;bmOnDefaultAddr;pmOnDefaultAddr;rail;railMask
         if numel(f) >= MM_FIELD_NOADDR_PM
             nowNoAddr = [str2double(f(MM_FIELD_NOADDR_BM)), str2double(f(MM_FIELD_NOADDR_PM))] == 1;
             types = {'BM', 'PM'};  defaults = {'0x10', '0x20'};  examples = {'0x11', '0x21'};
@@ -626,14 +704,15 @@ function MM_GUI()
             noAddr = nowNoAddr;
         end
         updateEisButtons(str2double(f(2)) == 1);
+        checkBalance(f);
     end
 
     % Start/Abbrechen der manuellen EIS-Messung: nur im Modus Manuell bedienbar
     function updateEisButtons(busy)
         mmBusy = busy;
         manual = ~isAutoMode();
-        set(hStart, 'Enable', onOff(manual && ~busy));
-        set(hAbort, 'Enable', onOff(manual && busy));
+        set(hStart, 'Enable', onOff(manual && ~busy && ~intervalRun.active));
+        set(hAbort, 'Enable', onOff(manual && (busy || intervalRun.active)));
     end
 
     function onConfig(f)
@@ -651,7 +730,7 @@ function MM_GUI()
                 cfg.pmSource = str2double(f(3:end));
                 buildCellGrid();
                 updateSelectionLists();
-                resizeProfile();
+                resizeProgram();
         end
     end
 
@@ -673,6 +752,9 @@ function MM_GUI()
         gridH = struct();
         numCells = max(numel(cfg.bmAddr), numel(cfg.pmAddr));
         stackSel(end + 1:numel(cfg.bmAddr)) = true;     % neue Zellen: standardmaessig verbunden
+        railLimitA(end + 1:numel(cfg.bmAddr)) = RAIL_LIMIT_DEFAULT_A;
+        railLimitSent(end + 1:numel(cfg.bmAddr)) = NaT;
+        balanceSel(end + 1:numel(cfg.bmAddr)) = true;   % neue Zellen: im Balancing
         for k = numel(cellNames) + 1:numCells
             cellNames(k) = string(sprintf('Zelle_%c', FIRST_CELL_LETTER + k - 1));
         end
@@ -704,12 +786,28 @@ function MM_GUI()
                         'Units', 'normalized', 'Position', pos, 'FontSize', GRID_FONT_SIZE, ...
                         'TooltipString', 'Name der Zelle (für Log und Ergebnisdatei)', ...
                         'Callback', @(src, ~) onCellNameEdited(k, src));
+                elseif strcmp(key, 'railLimit') && k <= numel(cfg.bmAddr)
+                    h(k) = uicontrol(pGrid, 'Style', 'edit', 'String', sprintf('%.2f', railLimitA(k)), ...
+                        'Units', 'normalized', 'Position', pos, 'FontSize', GRID_FONT_SIZE, ...
+                        'BackgroundColor', COLOR_VALUE, 'TooltipString', railLimitTooltip(k, NaN), ...
+                        'Callback', @(src, ~) onRailLimitEdited(k, src));
+                elseif strcmp(key, 'balance') && k <= numel(cfg.bmAddr)
+                    h(k) = uicontrol(pGrid, 'Style', 'checkbox', 'String', 'aktiv', 'Value', balanceSel(k), ...
+                        'Units', 'normalized', 'Position', pos, 'FontSize', GRID_FONT_SIZE, ...
+                        'BackgroundColor', COLOR_VALUE, 'Enable', onOff(~isAutoMode()), 'TooltipString', ...
+                        sprintf(['Haken gesetzt: Zelle %d ist ohne laufende Messung mit der Rail verbunden ' ...
+                                 '(Ausgleich mit den anderen angehakten Zellen, Spannungsdifferenz max. 50 mV).\n' ...
+                                 'Ohne Haken: Zelle %d wird von der Rail getrennt (CONNECT_Z = 0), z. B. damit\n' ...
+                                 'ein Ladegerät an der Rail nur die angehakten Zellen lädt (auch eine einzelne).\n' ...
+                                 'Nur im Modus Manuell änderbar, in der Automatik sind alle Zellen im Balancing.'], k, k), ...
+                        'Callback', @(src, ~) onBalanceEdited(k, src));
                 elseif strcmp(key, 'stackRail') && k <= numel(cfg.bmAddr)
                     h(k) = uicontrol(pGrid, 'Style', 'checkbox', 'String', 'verbunden', 'Value', stackSel(k), ...
                         'Units', 'normalized', 'Position', pos, 'FontSize', GRID_FONT_SIZE, ...
                         'BackgroundColor', COLOR_VALUE, 'TooltipString', ...
                         sprintf(['Haken gesetzt: Zelle %d ist bei der Stackmessung mit der Rail verbunden ' ...
-                                 '(CONNECT_Z = 1), sonst CONNECT_Z = 0'], k), ...
+                                 '(CONNECT_Z = 1), sonst CONNECT_Z = 0.\nGilt auch für Einzelzellmessungen ' ...
+                                 'mit "%s" (EIS-Panel)'], k, CELL_RAIL_TEXT), ...
                         'Callback', @(src, ~) onStackSelEdited(k, src));
                 else
                     h(k) = gridBox(pGrid, 'value', '-', pos, COLOR_VALUE, 'normal');
@@ -723,7 +821,7 @@ function MM_GUI()
             if k <= numel(cfg.bmAddr)
                 setGrid('bmAddr', k, cfg.bmAddr{k});
             else
-                setGrid({'bmAddr', 'bmState', 'u', 'i', 'tTab', 'eis', 'conz', 'stackRail'}, k, 'kein BM', COLOR_NO_BOARD);
+                setGrid({'bmAddr', 'bmState', 'u', 'i', 'tTab', 'eis', 'conz', 'railLimit', 'stackRail', 'balance'}, k, 'kein BM', COLOR_NO_BOARD);
             end
             if k <= numel(cfg.pmAddr)
                 setGrid('pmAddr', k, cfg.pmAddr{k});
@@ -771,6 +869,86 @@ function MM_GUI()
 
     function onStackSelEdited(k, src)
         stackSel(k) = logical(get(src, 'Value'));
+    end
+
+    % Balancing von Zelle k ein/aus (nur Manuell)
+    function onBalanceEdited(k, src)
+        if isAutoMode()
+            set(src, 'Value', 1);
+            return;
+        end
+        balanceSel(k) = logical(get(src, 'Value'));
+        sendBalance();
+        logMsg(sprintf('Balancing %s: %s', cellLabel(k), onOffText(balanceSel(k))));
+    end
+
+    function mask = balanceMask()
+        n = numel(cfg.bmAddr);
+        mask = sum(bitshift(1, find(balanceSel(1:n)) - 1));
+    end
+
+    function sendBalance()
+        balanceSent = datetime('now');
+        sendCommand(sprintf('RAIL;1;%d', balanceMask()));
+    end
+
+    % MM meldet seine Balancing-Maske: abweichend (z. B. nach Reset des MM) -> erneut senden
+    function checkBalance(f)
+        if numel(f) < MM_FIELD_RAIL_MASK || isempty(cfg.bmAddr) || numel(balanceSel) < numel(cfg.bmAddr)
+            return;
+        end
+        if str2double(f(MM_FIELD_RAIL_MASK)) ~= balanceMask() && ...
+                (isnat(balanceSent) || seconds(datetime('now') - balanceSent) >= BALANCE_RESEND_S)
+            sendBalance();
+        end
+    end
+
+    % Ueberstromgrenze von BM k geaendert: pruefen und an das MM senden (auch waehrend einer Messung)
+    function onRailLimitEdited(k, src)
+        v = str2double(strrep(strtrim(get(src, 'String')), ',', '.'));
+        if isnan(v) || v < RAIL_LIMIT_MIN_A || v > RAIL_LIMIT_MAX_A
+            logMsg(sprintf('Überstromgrenze %s: %.2f bis %.2f A erlaubt', cellLabel(k), RAIL_LIMIT_MIN_A, RAIL_LIMIT_MAX_A));
+            set(src, 'String', sprintf('%.2f', railLimitA(k)));
+            return;
+        end
+        railLimitA(k) = v;
+        set(src, 'String', sprintf('%.2f', v));
+        sendRailLimit(k);
+        logMsg(sprintf('Überstromgrenze %s: %.2f A (Laden und Entladen)', cellLabel(k), v));
+    end
+
+    function sendRailLimit(k)
+        railLimitSent(k) = datetime('now');
+        sendCommand(sprintf('BMIMAX;%d;%d', k, round(railLimitA(k) * MILLI)));
+    end
+
+    function s = railLimitTooltip(k, reportedA)
+        s = sprintf(['Überstromgrenze von Zelle %d an der Rail (Betrag, Laden und Entladen):\n' ...
+                     'bei |I| >= Grenze mit CONNECT_Z = 1 trennt das BM die Zelle von der Rail (BM-Fehler 9).\n' ...
+                     '%.2f bis %.2f A, Standard %.2f A. Eingabe mit Enter übernehmen.'], ...
+                    k, RAIL_LIMIT_MIN_A, RAIL_LIMIT_MAX_A, RAIL_LIMIT_DEFAULT_A);
+        if ~isnan(reportedA)
+            s = sprintf('%s\nBM meldet: %.2f A', s, reportedA);
+        end
+    end
+
+    % BM meldet seine Grenze: abweichend (z. B. nach Reset von BM oder MM) -> Sollwert erneut senden
+    function checkRailLimit(k, f)
+        if numel(f) < STAT_BM_FIELD_IMAX || k > numel(railLimitA) || ~isfield(gridH, 'railLimit')
+            return;
+        end
+        reportedA = str2double(f(STAT_BM_FIELD_IMAX)) / MILLI;
+        h = gridH.railLimit(k);
+        matches = abs(reportedA - railLimitA(k)) < 1 / MILLI;
+        color = COLOR_VALUE;
+        if ~matches
+            color = COLOR_STATE_ACTIVE;
+        end
+        set(h, 'BackgroundColor', color, 'TooltipString', railLimitTooltip(k, reportedA));
+        if ~matches && (isnat(railLimitSent(k)) || ...
+                        seconds(datetime('now') - railLimitSent(k)) >= RAIL_LIMIT_RESEND_S)
+            sendRailLimit(k);
+        end
     end
 
     function onCellNameEdited(k, src)
@@ -986,6 +1164,25 @@ function MM_GUI()
             logMsg('Stackmessung: mindestens eine Zelle muss mit der Rail verbunden sein (Haken in der Zellenübersicht)');
             return;
         end
+        % Testmodus Stackkonfiguration: nur Manuell und nur fuer Messungen mit Einzelzellen
+        job.cellMode = CELL_MODE_ALONE;
+        if ~isAutoMode() && get(hCellRail, 'Value') == 1 && ~strcmp(job.target, 'S')
+            if isempty(selected)
+                logMsg(['Stackkonfiguration: mindestens eine Zelle muss bei "Stackmessung: an Rail" ' ...
+                        'angehakt sein']);
+                return;
+            end
+            if sel <= n && ~stackSel(sel)
+                logMsg(sprintf('Stackkonfiguration: %s ist bei "Stackmessung: an Rail" nicht angehakt', cellLabel(sel)));
+                return;
+            end
+            if sel > n && numel(selected) < n
+                logMsg(['Stackkonfiguration: bei "alle Zellen" müssen alle Zellen bei "Stackmessung: an Rail" ' ...
+                        'angehakt sein, nicht angehakt: ' cellList(setdiff(1:n, selected))]);
+                return;
+            end
+            job.cellMode = CELL_MODE_ON_RAIL;
+        end
         info = struct();
         info.folder    = get(hFolder, 'String');
         info.baseName  = regexprep(get(hFilename, 'String'), '[^\w\-]', '_');
@@ -997,14 +1194,15 @@ function MM_GUI()
                                 'waveform', WAVEFORM_TEXT{job.waveIndex + 1}, ...
                                 'averages', job.averages, ...
                                 'measTime', MEAS_TIME_TEXT{job.timeIndex + 1}, ...
-                                'stackCells', strjoin(arrayfun(@num2str, selected, 'UniformOutput', false), ', '));
+                                'stackCells', strjoin(arrayfun(@num2str, selected, 'UniformOutput', false), ', '), ...
+                                'cellMode', job.cellMode);
         job.info = info;
         ok = true;
     end
 
     function sendEis(target, job)
-        sendCommand(sprintf('EIS;%s;%d;%d;%d;%d;%d;%d;%d', target, job.fStart, job.fStop, ...
-                            job.ampIndex, job.waveIndex, job.averages, job.timeIndex, job.stackMask));
+        sendCommand(sprintf('EIS;%s;%d;%d;%d;%d;%d;%d;%d;%d', target, job.fStart, job.fStop, ...
+                            job.ampIndex, job.waveIndex, job.averages, job.timeIndex, job.stackMask, job.cellMode));
     end
 
     % neuer Messauftrag: Ergebnisse und Diagramm zuruecksetzen
@@ -1021,14 +1219,20 @@ function MM_GUI()
         if ~ok
             return;
         end
+        if get(hIntEnable, 'Value') == 1 && ~isAutoMode()
+            startInterval(job);                      % Messreihe in festen Zeitabstaenden
+            return;
+        end
         beginJob(job.info);
         sendEis(job.target, job);
     end
 
     function onEisBegin(f)
-        % EISBEGIN;target;fstart;fstop;amp;wave;avg;time;stackMask
+        % EISBEGIN;target;fstart;fstop;amp;wave;avg;time;stackMask;onRail
         t = char(f(2));
         m.target = t;
+        m.onRail = numel(f) >= EISBEGIN_FIELD_ON_RAIL && ...
+                   str2double(f(EISBEGIN_FIELD_ON_RAIL)) == CELL_MODE_ON_RAIL;   % nur Einzelzellen
         m.cells  = zeros(0, 3);          % [BM, U mV, T degC]
         m.data   = zeros(0, 4);          % [Index, f Hz, Re uOhm, Im uOhm]
         m.pm     = pmLast;
@@ -1036,8 +1240,8 @@ function MM_GUI()
         meas(t) = m;
         updateEisButtons(true);
         autoOnEisBegin();
-        set(hProgress, 'String', sprintf('%s: Messung gestartet', targetText(t)));
-        logMsg(sprintf('EIS %s gestartet', targetText(t)));
+        set(hProgress, 'String', sprintf('%s: Messung gestartet', measLabel(t)));
+        logMsg(sprintf('EIS %s gestartet', measLabel(t)));
     end
 
     function onEisCell(f)
@@ -1054,7 +1258,7 @@ function MM_GUI()
         idx = str2double(f(3));
         if idx ~= PROGRESS_IDLE
             s = jobInfo.settings;
-            set(hProgress, 'String', sprintf('%s: Frequenz %d von %d (%.2f Hz)', targetText(t), ...
+            set(hProgress, 'String', sprintf('%s: Frequenz %d von %d (%.2f Hz)', measLabel(t), ...
                 idx - s.fStart + 1, s.fStop - s.fStart + 1, FREQ_HZ(idx + 1)));
         end
     end
@@ -1070,7 +1274,7 @@ function MM_GUI()
         if isKey(plotHandles, t) && isvalid(plotHandles(t))
             set(plotHandles(t), 'XData', re, 'YData', -im);
         else
-            plotHandles(t) = plot(ax, re, -im, '-o', 'DisplayName', targetText(t));
+            plotHandles(t) = plot(ax, re, -im, '-o', 'DisplayName', measLabel(t));
             legend(ax, 'show', 'Location', 'best');
         end
         set(plotHandles(t), 'UserData', m.data(:, 2), 'CreateFcn', FREQ_TIP_CREATE_FCN);
@@ -1143,9 +1347,9 @@ function MM_GUI()
         % EISEND;target;OK   |   EISEND;target;ERR;REASON[;BMk][;BM_ERRn]
         t = char(f(2));
         if f(3) == "OK"
-            file = EIS_Textdatei_schreiben(meas(t), jobInfo, targetText(t));
+            file = EIS_Textdatei_schreiben(meas(t), jobInfo, measLabel(t));
             annotateFrequencies(t);
-            logMsg(sprintf('EIS %s fertig: %s', targetText(t), file));
+            logMsg(sprintf('EIS %s fertig: %s', measLabel(t), file));
             autoOnEisResult(t, true, file);
         else
             reason = char(f(4));
@@ -1160,7 +1364,7 @@ function MM_GUI()
                     reason = sprintf('%s, betrifft BM %s', reason, extractAfter(f(k), "BM"));
                 end
             end
-            logMsg(sprintf('EIS %s fehlgeschlagen: %s', targetText(t), reason));
+            logMsg(sprintf('EIS %s fehlgeschlagen: %s', measLabel(t), reason));
             autoOnEisResult(t, false, reason);
         end
     end
@@ -1171,6 +1375,7 @@ function MM_GUI()
         set(hProgress, 'String', sprintf('Messauftrag beendet: %s von %s erfolgreich', f(2), f(3)));
         logMsg(get(hProgress, 'String'));
         autoOnEisDone();
+        intervalOnDone(f(2) == f(3));
     end
 
     %% =========================================================================
@@ -1187,7 +1392,25 @@ function MM_GUI()
         set(pAuto, 'Visible', onOff(auto));
         updateEisButtons(mmBusy);
         if auto
-            resizeProfile();
+            set(hCellRail, 'Value', 0);              % Automatik misst Einzelzellen immer getrennt
+        end
+        set(hCellRail, 'Enable', onOff(~auto));
+        set([hIntEnable, hIntMin, hIntCount], 'Enable', onOff(~auto));   % Intervallmessung nur Manuell
+        % Balancing: in der Automatik immer alle Zellen
+        if isfield(gridH, 'balance')
+            hb = gridH.balance(1:min(numel(gridH.balance), numel(cfg.bmAddr)));
+            if auto && ~all(balanceSel)
+                balanceSel(:) = true;
+                set(hb, 'Value', 1);
+                if ~isempty(device)
+                    sendBalance();
+                end
+                logMsg('Automatik: Balancing für alle Zellen eingeschaltet');
+            end
+            set(hb, 'Enable', onOff(~auto));
+        end
+        if auto
+            resizeProgram();
             logMsg('Betriebsart: Automatik');
         else
             logMsg('Betriebsart: Manuell');
@@ -1195,46 +1418,48 @@ function MM_GUI()
     end
 
     %% =========================================================================
-    %  Automatik: Ablaufsteuerung
+    %  Automatik: Ablaufsteuerung (Schrittliste)
     %  =========================================================================
+    % Die Automatik arbeitet eine Schrittliste (autoProgram) ab. Schritttypen:
+    %   TEMP    Solltemperaturen setzen (je Zelle, leer = unveraendert) und warten, bis alle
+    %           temperierten Zellen die Haltezeit lang innerhalb der Toleranz liegen
+    %   WAIT    feste Wartezeit (die Temperaturregelung laeuft weiter)
+    %   EIS     EIS-Messung (Ziel je Schritt, alle anderen Einstellungen aus dem EIS-Panel)
+    %   REPEAT  die Schritte ab Schritt <from> bis zum Schritt davor insgesamt <count>-mal
     % Zustaende (autoRun.state), geprueft im Takt AUTO_TICK_S (autoTick):
     %   IDLE    keine Automatik
-    %   WAIT    Sollwerte des Schritts gesetzt, warten bis alle Zellen die Haltezeit lang
-    %           innerhalb der Toleranz liegen -> EIS starten
+    %   TEMP    Temperaturschritt: warten auf stabile Temperatur
+    %   DELAY   Wartezeit laeuft
     %   MEAS    EIS-Auftrag(e) des Schritts laufen (Ende ueber EISDONE bzw. ERR;EIS)
     %   ASK     ein Auftrag ist fehlgeschlagen -> Dialog im naechsten Takt
     %   ASKING  Dialog offen (Wiederholen / Automatik abbrechen)
-    %   RETURN  Ende oder Abbruch: Zellen auf AUTO_END_TEMP_DEGC zuruecktemperieren; sobald alle
-    %           Zellen innerhalb der Toleranz liegen, wird die Temperaturregelung ausgeschaltet
-    %           (die Zelle soll nicht lange ungeregelt bei hoher Temperatur bleiben -> Alterung)
-    % Beteiligt sind die Zellen 1..min(Anzahl BM, Anzahl PM), d. h. Zellen mit BM und PM.
+    %   RETURN  Ende oder Abbruch: temperierte Zellen auf AUTO_END_TEMP_DEGC zuruecktemperieren;
+    %           sobald alle innerhalb der Toleranz liegen, wird die Temperaturregelung
+    %           ausgeschaltet (die Zelle soll nicht lange ungeregelt bei hoher Temperatur
+    %           bleiben -> Alterung)
+    % Temperiert werden koennen die Zellen 1..min(Anzahl BM, Anzahl PM) (Zellen mit BM und PM).
 
     function n = autoCellCount()
         n = min(numel(cfg.bmAddr), numel(cfg.pmAddr));
     end
 
-    % Zellen, die das Profil abfahren, folgen aus "Messung" im EIS-Panel: Einzelzelle k ->
-    % nur Zelle k; Stack, alle Zellen, alle Zellen + Stack -> alle Zellen mit BM und PM.
-    % So koennen Temperierung und Messung nicht auseinanderlaufen.
-    function cells = autoSelectedCells()
-        sel = get(hTarget, 'Value');
-        if sel <= numel(cfg.bmAddr)
-            cells = sel;
-        else
-            cells = 1:autoCellCount();
+    % Zellen, die in einem Temperaturschritt der Schrittliste eine Vorgabe haben
+    function cells = programTempCells(P)
+        cells = [];
+        for i = 1:numel(P)
+            if strcmp(P(i).type, STEP_TEMP)
+                cells = union(cells, find(~isnan(P(i).temps)));
+            end
         end
+        cells = reshape(cells, 1, []);
     end
 
     function updateAutoHint()
-        cells = autoSelectedCells();
+        cells = programTempCells(autoProgram);
         if isempty(cells)
             set(hAutoHint, 'String', 'Temperiert: -');
-        elseif any(cells > autoCellCount())
-            set(hAutoHint, 'String', sprintf('Zelle %d hat kein PM', cells(1)));
-        elseif get(hTarget, 'Value') <= numel(cfg.bmAddr)
-            set(hAutoHint, 'String', sprintf('Temperiert: nur Zelle %d', cells));
         else
-            set(hAutoHint, 'String', 'Temperiert: alle Zellen');
+            set(hAutoHint, 'String', ['Temperiert: ' cellList(cells)]);
         end
     end
 
@@ -1242,41 +1467,39 @@ function MM_GUI()
         running = ~strcmp(autoRun.state, 'IDLE');
     end
 
-    % Profil an die Zahl der Zellen anpassen (neue Zellen uebernehmen die Temperaturen von Zelle 1)
-    function resizeProfile()
+    % Schrittliste an die Zahl der Zellen anpassen (Temperaturvorgaben neuer Zellen: leer)
+    function resizeProgram()
         n = autoCellCount();
-        if autoRunning() || n == 0
+        if autoRunning()
             updateAutoSummary();
             return;
         end
-        if isempty(autoProfile)
-            autoProfile = DEFAULT_TSET_DEGC * ones(1, n);
-        elseif size(autoProfile, 2) < n
-            autoProfile = [autoProfile, repmat(autoProfile(:, 1), 1, n - size(autoProfile, 2))];
-        else
-            autoProfile = autoProfile(:, 1:n);
+        if isempty(autoProgram) && n > 0                 % Standard: alle Zellen 25 degC, dann alle messen
+            autoProgram = [newStep(STEP_TEMP, n), newStep(STEP_EIS, n)];
+        end
+        for i = 1:numel(autoProgram)
+            t = autoProgram(i).temps;
+            if numel(t) < n
+                t(end + 1:n) = NaN;
+            end
+            autoProgram(i).temps = t(1:n);
         end
         updateAutoSummary();
     end
 
     function updateAutoSummary()
-        if isempty(autoProfile)
-            set(hAutoSummary, 'String', 'kein Profil (nach dem Verbinden: je Zelle mit BM und PM eine Spalte)', ...
-                'TooltipString', '');
+        if isempty(autoProgram)
+            set(hAutoSummary, 'String', 'keine Schrittliste - mit "Schritte bearbeiten ..." anlegen', 'TooltipString', '');
+            updateAutoHint();
             return;
         end
-        parts = arrayfun(@(k) sprintf('Z%d: %s', k, stepList(autoProfile(:, k))), 1:size(autoProfile, 2), ...
-                         'UniformOutput', false);
-        set(hAutoSummary, 'String', sprintf('%d Schritt(e)   %s   [°C]', size(autoProfile, 1), strjoin(parts, '   |   ')), ...
-            'TooltipString', strjoin(profileToText(autoProfile), newline));
-    end
-
-    function s = stepList(v)
-        txt = arrayfun(@(x) sprintf('%g', x), v(:).', 'UniformOutput', false);
-        if numel(txt) > PROFILE_SUMMARY_MAX_STEPS
-            txt = [txt(1:PROFILE_SUMMARY_MAX_STEPS), {'...'}];
+        txt = arrayfun(@(i) sprintf('%d %s', i, stepShortText(autoProgram(i))), 1:numel(autoProgram), 'UniformOutput', false);
+        if numel(txt) > PROGRAM_SUMMARY_MAX_STEPS
+            txt = [txt(1:PROGRAM_SUMMARY_MAX_STEPS), {'...'}];
         end
-        s = strjoin(txt, ' → ');
+        set(hAutoSummary, 'String', sprintf('%d Schritt(e):  %s', numel(autoProgram), strjoin(txt, '  →  ')), ...
+            'TooltipString', strjoin(programToText(autoProgram), newline));
+        updateAutoHint();
     end
 
     function startAuto()
@@ -1288,16 +1511,7 @@ function MM_GUI()
             return;
         end
         n = autoCellCount();
-        if n == 0 || size(autoProfile, 2) ~= n
-            logMsg('Automatik: kein gültiges Profil - je Zelle mit BM und PM wird eine Spalte gebraucht');
-            return;
-        end
-        cells = autoSelectedCells();
-        if isempty(cells) || any(cells > n)
-            logMsg('Automatik: die unter "Messung" gewählte Zelle hat kein PM - sie kann nicht temperiert werden');
-            return;
-        end
-        msg = checkProfile(autoProfile(:, cells));
+        msg = checkProgram(autoProgram, numel(cfg.bmAddr), n);
         if ~isempty(msg)
             logMsg(['Automatik: ' msg]);
             return;
@@ -1312,8 +1526,13 @@ function MM_GUI()
             logMsg('Automatik: es läuft noch eine EIS-Messung');
             return;
         end
-        [job, ok] = readEisJob();
+        [job, ok] = readEisJob();                % Einstellungen des EIS-Panels (Ziel je Schritt)
         if ~ok
+            return;
+        end
+        targets = {autoProgram(strcmp({autoProgram.type}, STEP_EIS)).target};
+        if any(ismember(targets, {'S', 'ALLS'})) && job.stackMask == 0
+            logMsg('Automatik: Stackmessung in der Schrittliste - mindestens eine Zelle muss bei "Stackmessung: an Rail" angehakt sein');
             return;
         end
         folder = fullfile(job.info.folder, sprintf('%s_Automatik_%s', job.info.baseName, ...
@@ -1324,18 +1543,20 @@ function MM_GUI()
             return;
         end
 
-        autoRun = struct('state', 'WAIT', 'folder', folder, 'profile', autoProfile, 'cells', cells, ...
-                         'step', 0, 'tol', tol, 'holdS', holdMin * SECONDS_PER_MINUTE, ...
+        autoRun = struct('state', 'IDLE', 'folder', folder, 'program', autoProgram, 'n', n, 'pc', 0, ...
+                         'repeatDone', zeros(1, numel(autoProgram)), 'setpoints', nan(1, n), 'cells', [], ...
+                         'tol', tol, 'holdS', holdMin * SECONDS_PER_MINUTE, ...
                          'criterion', get(hAutoCrit, 'Value'), 'job', job, ...
-                         'stableSince', NaT, 'stepStart', NaT, 'queue', {{}}, 'failed', {{}}, ...
-                         'sentTarget', '', 'sentAt', NaT, 'eisBegun', false);
+                         'stableSince', NaT, 'stepStart', NaT, 'waitUntil', NaT, 'queue', {{}}, 'failed', {{}}, ...
+                         'sentTarget', '', 'sentAt', NaT, 'eisBegun', false, 'eisCount', 0);
         writeProfileFile(fullfile(folder, AUTO_PROFILE_FILE), autoRun);
-        autoLog(sprintf('gestartet: %d Schritt(e), Zelle(n) %s, EIS %s, Toleranz %.2f K, Haltezeit %g min, Kriterium %s, Ordner %s', ...
-                        size(autoProfile, 1), cellList(cells), autoTargetText(job.target), tol, holdMin, ...
-                        AUTO_CRITERION_TEXT{autoRun.criterion}, folder));
+        autoLog(sprintf('gestartet: %d Schritt(e), Toleranz %.2f K, Haltezeit %g min, Kriterium %s, Ordner %s', ...
+                        numel(autoProgram), tol, holdMin, AUTO_CRITERION_TEXT{autoRun.criterion}, folder));
         setAutoLock(true);
-        autoEnterStep(1);
-        start(autoTimer);
+        autoRunStep(1);
+        if autoRunning() && ~isRunning(autoTimer)
+            start(autoTimer);
+        end
     end
 
     function setAutoLock(locked)
@@ -1344,20 +1565,69 @@ function MM_GUI()
         set(hAutoStop, 'Enable', onOff(locked));
     end
 
+    % fuehrt die Schrittliste ab Schritt pc aus, bis ein Schritt Zeit braucht (Temperatur,
+    % Wartezeit, Messung); Wiederholungsschritte springen sofort zurueck
+    function autoRunStep(pc)
+        P = autoRun.program;
+        while true
+            if pc > numel(P)
+                autoFinish();
+                return;
+            end
+            autoRun.pc = pc;
+            st = P(pc);
+            switch st.type
+                case STEP_REPEAT
+                    done = autoRun.repeatDone(pc) + 1;          % abgeschlossene Durchlaeufe des Blocks
+                    if done < st.count
+                        autoRun.repeatDone(pc) = done;
+                        autoRun.repeatDone(st.from:pc - 1) = 0; % innere Wiederholungen beginnen neu
+                        autoLog(sprintf('Schritt %d: Durchlauf %d/%d beendet, weiter mit Schritt %d', ...
+                                        pc, done, st.count, st.from));
+                        pc = st.from;
+                    else
+                        autoRun.repeatDone(pc) = 0;             % falls ein aeusserer Block erneut kommt
+                        autoLog(sprintf('Schritt %d: alle %d Durchläufe beendet', pc, st.count));
+                        pc = pc + 1;
+                    end
+                case STEP_TEMP
+                    autoEnterTempStep(st);
+                    return;
+                case STEP_WAIT
+                    autoRun.state     = 'DELAY';
+                    autoRun.stepStart = datetime('now');
+                    autoRun.waitUntil = autoRun.stepStart + minutes(st.minutes);
+                    autoLog(sprintf('Schritt %d/%d%s: Wartezeit %s', pc, numel(P), loopText(pc), minSec(st.minutes * SECONDS_PER_MINUTE)));
+                    autoCheckDelay();
+                    return;
+                case STEP_EIS
+                    autoStartMeasurement(st.target);
+                    return;
+            end
+        end
+    end
+
+    function autoAdvance()
+        autoRunStep(autoRun.pc + 1);
+    end
+
     % Sollwerte des Schritts an die PMs, Regelung einschalten, auf stabile Temperatur warten
-    function autoEnterStep(stepIndex)
-        autoRun.step        = stepIndex;
-        autoRun.state       = 'WAIT';
+    function autoEnterTempStep(st)
+        set_ = find(~isnan(st.temps));
+        autoRun.setpoints(set_) = st.temps(set_);
+        autoRun.cells       = union(autoRun.cells, set_);
+        autoRun.cells       = reshape(autoRun.cells, 1, []);
+        autoRun.state       = 'TEMP';
         autoRun.stableSince = NaT;
         autoRun.stepStart   = datetime('now');
-        temps = autoRun.profile(stepIndex, :);
-        for k = autoRun.cells
-            sendCommand(sprintf('PMSET;%d;%d', k, round(temps(k) * CENTI)));
+        for k = set_
+            sendCommand(sprintf('PMSET;%d;%d', k, round(st.temps(k) * CENTI)));
             sendCommand(sprintf('PMSTART;%d', k));
         end
-        autoLog(sprintf('Schritt %d/%d: Solltemperaturen %s °C', stepIndex, autoStepCount(), temperatureList(temps(autoRun.cells))));
-        set(hAutoStatus, 'String', sprintf('Schritt %d/%d: Sollwerte gesetzt (%s °C)', ...
-            stepIndex, autoStepCount(), temperatureList(temps(autoRun.cells))), 'ForegroundColor', 'k');
+        autoLog(sprintf('Schritt %d/%d%s: Solltemperaturen %s', autoRun.pc, autoStepCount(), loopText(autoRun.pc), ...
+                        setpointText(autoRun.cells)));
+        set(hAutoStatus, 'String', sprintf('Schritt %d/%d: Sollwerte gesetzt (%s)', autoRun.pc, autoStepCount(), ...
+            setpointText(autoRun.cells)), 'ForegroundColor', 'k');
     end
 
     function r = isRunning(t)
@@ -1365,7 +1635,29 @@ function MM_GUI()
     end
 
     function n = autoStepCount()
-        n = size(autoRun.profile, 1);
+        n = numel(autoRun.program);
+    end
+
+    % Zusatz "(Durchlauf x/n)" fuer alle Wiederholungsbloecke, in denen Schritt pc liegt
+    function s = loopText(pc)
+        s = '';
+        P = autoRun.program;
+        for r = pc + 1:numel(P)
+            if strcmp(P(r).type, STEP_REPEAT) && P(r).from <= pc
+                s = sprintf('%s, Durchlauf %d/%d', s, autoRun.repeatDone(r) + 1, P(r).count);
+            end
+        end
+        if ~isempty(s)
+            s = [' (' s(3:end) ')'];
+        end
+    end
+
+    function s = setpointText(cells)
+        if isempty(cells)
+            s = 'keine Zelle temperiert';
+            return;
+        end
+        s = strjoin(arrayfun(@(k) sprintf('Z%d %g °C', k, autoRun.setpoints(k)), cells, 'UniformOutput', false), ', ');
     end
 
     function autoTick()
@@ -1374,8 +1666,9 @@ function MM_GUI()
         end
         try
             switch autoRun.state
-                case 'WAIT', autoCheckTemperatures();
-                case 'MEAS', autoCheckEisStart();
+                case 'TEMP',   autoCheckTemperatures();
+                case 'DELAY',  autoCheckDelay();
+                case 'MEAS',   autoCheckEisStart();
                 case 'ASK',    autoAskRepeat();
                 case 'RETURN', autoCheckReturn();
             end
@@ -1384,9 +1677,9 @@ function MM_GUI()
         end
     end
 
-    % Abweichung jeder Zelle von ihrer Solltemperatur; problem = Grund, warum die Bedingung
-    % gerade nicht pruefbar ist (Board offline, Wert ungueltig, Sollwert nicht uebernommen)
-    % temps: Solltemperaturen aller Zellen (Spalten des Profils); dev: je beteiligte Zelle
+    % Abweichung jeder temperierten Zelle von ihrer Solltemperatur; problem = Grund, warum die
+    % Bedingung gerade nicht pruefbar ist (Board offline, Wert ungueltig, Sollwert nicht uebernommen)
+    % temps: Solltemperaturen aller Zellen; dev: je temperierte Zelle (autoRun.cells)
     function [dev, problem] = autoDeviations(temps, nowT)
         dev = nan(1, numel(autoRun.cells));
         problem = '';
@@ -1407,27 +1700,26 @@ function MM_GUI()
     end
 
     function autoCheckTemperatures()
-        stepIndex = autoRun.step;
-        temps = autoRun.profile(stepIndex, :);
+        pc = autoRun.pc;
         nowT = datetime('now');
-        [dev, problem] = autoDeviations(temps, nowT);
+        [dev, problem] = autoDeviations(autoRun.setpoints, nowT);
         inTol = isempty(problem) && all(abs(dev) < autoRun.tol);
         if inTol
             if isnat(autoRun.stableSince)
                 autoRun.stableSince = nowT;
-                autoLog(sprintf('Schritt %d: alle Zellen innerhalb ±%.2f K', stepIndex, autoRun.tol), false);
+                autoLog(sprintf('Schritt %d: alle temperierten Zellen innerhalb ±%.2f K', pc, autoRun.tol), false);
             end
             held = seconds(nowT - autoRun.stableSince);
         else
             if ~isnat(autoRun.stableSince)
-                autoLog(sprintf('Schritt %d: Toleranz verlassen (Abweichungen %s K)', stepIndex, deviationList(dev)), false);
+                autoLog(sprintf('Schritt %d: Toleranz verlassen (Abweichungen %s K)', pc, deviationList(dev)), false);
             end
             autoRun.stableSince = NaT;
             held = 0;
         end
 
-        status = sprintf('Schritt %d/%d (%s °C): warte %s, stabil %s von %s, Abweichung %s K', ...
-            stepIndex, autoStepCount(), temperatureList(temps(autoRun.cells)), minSec(seconds(nowT - autoRun.stepStart)), ...
+        status = sprintf('Schritt %d/%d%s Temperatur (%s): warte %s, stabil %s von %s, Abweichung %s K', ...
+            pc, autoStepCount(), loopText(pc), setpointText(autoRun.cells), minSec(seconds(nowT - autoRun.stepStart)), ...
             minSec(held), minSec(autoRun.holdS), deviationList(dev));
         color = 'k';
         if ~isempty(problem)
@@ -1437,9 +1729,24 @@ function MM_GUI()
         set(hAutoStatus, 'String', status, 'TooltipString', status, 'ForegroundColor', color);
 
         if inTol && held >= autoRun.holdS
-            autoLog(sprintf('Schritt %d: Temperatur %s gehalten (Wartezeit gesamt %s) -> EIS-Messung', ...
-                            stepIndex, minSec(autoRun.holdS), minSec(seconds(nowT - autoRun.stepStart))));
-            autoStartMeasurement();
+            autoLog(sprintf('Schritt %d: Temperatur %s gehalten (Wartezeit gesamt %s)', ...
+                            pc, minSec(autoRun.holdS), minSec(seconds(nowT - autoRun.stepStart))));
+            autoAdvance();
+        end
+    end
+
+    function autoCheckDelay()
+        nowT = datetime('now');
+        status = sprintf('Schritt %d/%d%s Wartezeit: noch %s von %s', autoRun.pc, autoStepCount(), loopText(autoRun.pc), ...
+            minSec(seconds(autoRun.waitUntil - nowT)), minSec(seconds(autoRun.waitUntil - autoRun.stepStart)));
+        if ~isempty(autoRun.cells)
+            dev = autoDeviations(autoRun.setpoints, nowT);
+            status = sprintf('%s, Abweichung %s K', status, deviationList(dev));
+        end
+        set(hAutoStatus, 'String', status, 'TooltipString', status, 'ForegroundColor', 'k');
+        if nowT >= autoRun.waitUntil
+            autoLog(sprintf('Schritt %d: Wartezeit abgelaufen', autoRun.pc), false);
+            autoAdvance();
         end
     end
 
@@ -1475,18 +1782,28 @@ function MM_GUI()
         valid = true;
     end
 
-    function autoStartMeasurement()
-        temps = autoRun.profile(autoRun.step, :);
+    function autoStartMeasurement(target)
+        autoRun.eisCount = autoRun.eisCount + 1;
+        if target(1) == 'C'
+            measured = str2double(target(2:end));
+        else
+            measured = 1:numel(cfg.bmAddr);
+        end
+        measured = measured(measured <= autoRun.n);
         info = autoRun.job.info;
         info.folder    = autoRun.folder;
-        info.baseName  = sprintf('%s_S%02d%s', autoRun.job.info.baseName, autoRun.step, temperatureSuffix(temps(autoRun.cells)));
-        info.comment   = strtrim(sprintf('%s [Automatik Schritt %d/%d, T Soll %s °C]', autoRun.job.info.comment, ...
-                                         autoRun.step, autoStepCount(), temperatureList(temps(autoRun.cells))));
+        info.baseName  = sprintf('%s_M%03d_S%02d%s', autoRun.job.info.baseName, autoRun.eisCount, autoRun.pc, ...
+                                 temperatureSuffix(autoRun.setpoints(measured)));
+        info.comment   = strtrim(sprintf('%s [Automatik Schritt %d/%d%s, Messung %d, T Soll %s]', autoRun.job.info.comment, ...
+                                         autoRun.pc, autoStepCount(), loopText(autoRun.pc), autoRun.eisCount, ...
+                                         setpointText(autoRun.cells)));
         info.cellNames = cellNames;
         beginJob(info);
-        autoRun.queue  = {autoRun.job.target};
+        autoRun.queue  = {target};
         autoRun.failed = {};
         autoRun.state  = 'MEAS';
+        autoLog(sprintf('Schritt %d/%d%s: EIS-Messung %s (Messung %d)', autoRun.pc, autoStepCount(), loopText(autoRun.pc), ...
+                        autoTargetText(target), autoRun.eisCount));
         autoSendNext();
     end
 
@@ -1495,8 +1812,8 @@ function MM_GUI()
         autoRun.queue(1)   = [];
         autoRun.eisBegun   = false;
         autoRun.sentAt     = datetime('now');
-        set(hAutoStatus, 'String', sprintf('Schritt %d/%d: EIS-Messung %s', autoRun.step, autoStepCount(), ...
-            autoTargetText(autoRun.sentTarget)), 'ForegroundColor', 'k');
+        set(hAutoStatus, 'String', sprintf('Schritt %d/%d%s: EIS-Messung %s', autoRun.pc, autoStepCount(), ...
+            loopText(autoRun.pc), autoTargetText(autoRun.sentTarget)), 'ForegroundColor', 'k');
         sendEis(autoRun.sentTarget, autoRun.job);
     end
 
@@ -1519,7 +1836,7 @@ function MM_GUI()
             return;
         end
         if ok
-            autoLog(sprintf('Schritt %d: EIS %s gespeichert: %s', autoRun.step, autoTargetText(target), detail), false);
+            autoLog(sprintf('Schritt %d: EIS %s gespeichert: %s', autoRun.pc, autoTargetText(target), detail), false);
         else
             autoMarkFailed(target, detail);
         end
@@ -1541,20 +1858,16 @@ function MM_GUI()
 
     function autoMarkFailed(target, reason)
         autoRun.failed{end + 1} = target;
-        autoLog(sprintf('Schritt %d: EIS %s fehlgeschlagen: %s', autoRun.step, autoTargetText(target), reason));
+        autoLog(sprintf('Schritt %d: EIS %s fehlgeschlagen: %s', autoRun.pc, autoTargetText(target), reason));
     end
 
-    % ein Auftrag ist fertig: naechster aus der Warteschlange, sonst Schritt auswerten
+    % ein Auftrag ist fertig: naechster aus der Warteschlange, sonst naechster Schritt
     function autoAfterTarget()
         if ~isempty(autoRun.queue)
             autoSendNext();
         elseif isempty(autoRun.failed)
-            autoLog(sprintf('Schritt %d/%d abgeschlossen', autoRun.step, autoStepCount()));
-            if autoRun.step < autoStepCount()
-                autoEnterStep(autoRun.step + 1);
-            else
-                autoFinish();
-            end
+            autoLog(sprintf('Schritt %d/%d abgeschlossen', autoRun.pc, autoStepCount()), false);
+            autoAdvance();
         else
             autoRun.state = 'ASK';          % Dialog im naechsten Takt, nicht im Empfangs-Callback
         end
@@ -1564,11 +1877,11 @@ function MM_GUI()
         autoRun.state = 'ASKING';
         failedText = strjoin(cellfun(@autoTargetText, unique(autoRun.failed, 'stable'), 'UniformOutput', false), ', ');
         set(hAutoStatus, 'String', sprintf('Schritt %d/%d: EIS fehlgeschlagen (%s) - Entscheidung nötig', ...
-            autoRun.step, autoStepCount(), failedText), 'ForegroundColor', COLOR_TEXT_ERROR);
+            autoRun.pc, autoStepCount(), failedText), 'ForegroundColor', COLOR_TEXT_ERROR);
         answer = questdlg(sprintf(['Schritt %d/%d: Die EIS-Messung von %s ist fehlgeschlagen (Grund im Log).\n\n' ...
                                    '%s: nur die fehlgeschlagenen Messungen erneut starten, die Temperatur wird gehalten.\n' ...
                                    '%s: Automatik beenden, Zellen auf %g °C temperieren, danach Temperaturregelung aus.'], ...
-                                  autoRun.step, autoStepCount(), failedText, AUTO_ANSWER_REPEAT, AUTO_ANSWER_ABORT, ...
+                                  autoRun.pc, autoStepCount(), failedText, AUTO_ANSWER_REPEAT, AUTO_ANSWER_ABORT, ...
                                   AUTO_END_TEMP_DEGC), ...
                           'Automatik: Messfehler', AUTO_ANSWER_REPEAT, AUTO_ANSWER_ABORT, AUTO_ANSWER_REPEAT);
         if ~strcmp(autoRun.state, 'ASKING')
@@ -1579,7 +1892,7 @@ function MM_GUI()
                 autoRun.queue  = unique(autoRun.failed, 'stable');
                 autoRun.failed = {};
                 autoRun.state  = 'MEAS';
-                autoLog(sprintf('Schritt %d: Wiederholung von %s', autoRun.step, failedText));
+                autoLog(sprintf('Schritt %d: Wiederholung von %s', autoRun.pc, failedText));
                 autoSendNext();
             case AUTO_ANSWER_ABORT
                 autoStop('Abbruch nach fehlgeschlagener EIS-Messung', 'return');
@@ -1607,8 +1920,8 @@ function MM_GUI()
     end
 
     function autoFinish()
-        autoLog(sprintf('alle %d Schritte gemessen', autoStepCount()));
-        autoReturnToEndTemp(sprintf('Automatik abgeschlossen (%d Schritte)', autoStepCount()), COLOR_TEXT_OK);
+        autoLog(sprintf('Schrittliste abgeschlossen (%d EIS-Messung(en))', autoRun.eisCount));
+        autoReturnToEndTemp(sprintf('Automatik abgeschlossen (%d Messung(en))', autoRun.eisCount), COLOR_TEXT_OK);
     end
 
     % Abbruch. mode:
@@ -1631,10 +1944,10 @@ function MM_GUI()
             case 'handover'
                 autoSetEndTemp();
                 autoLog(sprintf('abgebrochen in Schritt %d/%d: %s - PMs regeln selbständig auf %g °C weiter (von Hand ausschalten)', ...
-                                autoRun.step, autoStepCount(), reason, AUTO_END_TEMP_DEGC));
+                                autoRun.pc, autoStepCount(), reason, AUTO_END_TEMP_DEGC));
                 autoCleanup(sprintf('Automatik abgebrochen (%s) - PMs regeln auf %g °C', reason, AUTO_END_TEMP_DEGC), COLOR_TEXT_ERROR);
             otherwise
-                autoLog(sprintf('abgebrochen in Schritt %d/%d: %s', autoRun.step, autoStepCount(), reason));
+                autoLog(sprintf('abgebrochen in Schritt %d/%d: %s', autoRun.pc, autoStepCount(), reason));
                 autoReturnToEndTemp(sprintf('Automatik abgebrochen (%s)', reason), COLOR_TEXT_ERROR);
         end
     end
@@ -1646,14 +1959,16 @@ function MM_GUI()
         end
     end
 
-    % Zellen auf die Endtemperatur bringen; autoCheckReturn schaltet danach die Regelung aus
+    % temperierte Zellen auf die Endtemperatur bringen; autoCheckReturn schaltet danach die Regelung aus
     function autoReturnToEndTemp(summary, color)
         autoRun.state      = 'RETURN';
         autoRun.endSummary = summary;
         autoRun.endColor   = color;
         autoRun.stepStart  = datetime('now');
         autoSetEndTemp();
-        autoLog(sprintf('Zellen werden auf %g °C temperiert, danach wird die Temperaturregelung ausgeschaltet', AUTO_END_TEMP_DEGC));
+        if ~isempty(autoRun.cells)
+            autoLog(sprintf('Zellen werden auf %g °C temperiert, danach wird die Temperaturregelung ausgeschaltet', AUTO_END_TEMP_DEGC));
+        end
         set(hAutoStop, 'String', 'Temperierung sofort aus');
         if ~isRunning(autoTimer)
             start(autoTimer);
@@ -1662,7 +1977,7 @@ function MM_GUI()
 
     function autoCheckReturn()
         nowT = datetime('now');
-        temps = AUTO_END_TEMP_DEGC * ones(1, size(autoRun.profile, 2));
+        temps = AUTO_END_TEMP_DEGC * ones(1, autoRun.n);
         [dev, problem] = autoDeviations(temps, nowT);
         status = sprintf('%s - Zellen auf %g °C (seit %s), Abweichung %s K', autoRun.endSummary, AUTO_END_TEMP_DEGC, ...
                          minSec(seconds(nowT - autoRun.stepStart)), deviationList(dev));
@@ -1674,6 +1989,10 @@ function MM_GUI()
         set(hAutoStatus, 'String', status, 'TooltipString', status, 'ForegroundColor', color);
         if isempty(problem) && all(abs(dev) < autoRun.tol)
             autoStopPms();
+            if isempty(autoRun.cells)
+                autoCleanup(autoRun.endSummary, autoRun.endColor);
+                return;
+            end
             autoLog(sprintf('%g °C erreicht (nach %s) - Temperaturregelung ausgeschaltet', AUTO_END_TEMP_DEGC, ...
                             minSec(seconds(nowT - autoRun.stepStart))));
             autoCleanup(sprintf('%s - %g °C erreicht, Temperaturregelung aus', autoRun.endSummary, AUTO_END_TEMP_DEGC), ...
@@ -1719,18 +2038,17 @@ function MM_GUI()
     function writeProfileFile(filePath, run)
         fid = fopen(filePath, 'w', 'n', 'UTF-8');
         if fid < 0
-            logMsg(['Automatik: Profildatei nicht schreibbar: ' filePath]);
+            logMsg(['Automatik: Datei der Schrittliste nicht schreibbar: ' filePath]);
             return;
         end
         s = run.job.info.settings;
-        fprintf(fid, '# Temperaturprofil der Automatik (eine Zeile je Zelle, Werte in °C je Schritt)\n');
+        fprintf(fid, '# Schrittliste der Automatik\n');
         fprintf(fid, '# Start: %s\n', char(datetime('now', 'Format', 'yyyy-MM-dd HH:mm:ss')));
         fprintf(fid, '# Toleranz: %.2f K, Haltezeit: %g min, Kriterium: %s\n', run.tol, ...
                 run.holdS / SECONDS_PER_MINUTE, AUTO_CRITERION_TEXT{run.criterion});
-        fprintf(fid, '# Beteiligte Zellen: %s\n', cellList(run.cells));
-        fprintf(fid, '# EIS: %s, Frequenzindex %d..%d, Amplitude %s, Signalform %s, Mittelung %d, Messdauer %s\n', ...
-                autoTargetText(run.job.target), s.fStart, s.fStop, s.amplitude, s.waveform, s.averages, s.measTime);
-        lines = profileToText(run.profile);
+        fprintf(fid, '# EIS-Einstellungen: Frequenzindex %d..%d, Amplitude %s, Signalform %s, Mittelung %d, Messdauer %s\n', ...
+                s.fStart, s.fStop, s.amplitude, s.waveform, s.averages, s.measTime);
+        lines = programToText(run.program);
         fprintf(fid, '%s\n', lines{:});
         fclose(fid);
     end
@@ -1747,18 +2065,14 @@ function MM_GUI()
         s = strjoin(arrayfun(@(k) cellLabel(k), cells, 'UniformOutput', false), ', ');
     end
 
-    function s = temperatureList(temps)
-        s = strjoin(arrayfun(@(x) sprintf('%g', x), temps, 'UniformOutput', false), ' / ');
-    end
-
     function s = deviationList(dev)
         s = strjoin(arrayfun(@(x) sprintf('%+.2f', x), dev, 'UniformOutput', false), ' / ');
     end
 
-    % Dateinamenszusatz: _22_5C, wenn alle Zellen dieselbe Solltemperatur haben
+    % Dateinamenszusatz: _22_5C, wenn alle gemessenen Zellen dieselbe Solltemperatur haben
     function s = temperatureSuffix(temps)
         s = '';
-        if all(temps == temps(1))
+        if ~isempty(temps) && ~any(isnan(temps)) && all(temps == temps(1))
             s = ['_' strrep(sprintf('%g', temps(1)), '.', '_') 'C'];
         end
     end
@@ -1769,36 +2083,256 @@ function MM_GUI()
     end
 
     %% =========================================================================
-    %  Temperaturprofil: Text <-> Matrix
+    %  Schrittliste: Text <-> Struktur
     %  =========================================================================
-    % Textformat: eine Zeile je Zelle, Werte je Schritt durch Komma, Semikolon oder Leerzeichen
-    % getrennt, Dezimalpunkt. Zeilen mit '#' sind Kommentare.
-    %   Zelle 1: 25, 15, 5, 25
-    %   Zelle 2: 25, 20, 10, 25
-    %   alle: 25, 15, 5          (gilt fuer alle Zellen; spaetere Zeilen ueberschreiben einzelne)
-    % Zeilen ohne Bezeichnung gelten der Reihe nach fuer Zelle 1, 2, ...
+    % Textformat: ein Schritt je Zeile (eine fuehrende Nummer "3." wird ignoriert, Zeilen mit
+    % '#' sind Kommentare, Dezimalpunkt):
+    %   Temperatur: Zelle 1 = 25, Zelle 2 = 35     (nicht genannte Zellen: unveraendert)
+    %   Temperatur: alle = 25
+    %   Warten: 5 min                              (auch "30 s" oder "1.5 h")
+    %   EIS: alle Zellen                           (Zelle k, Stack, alle Zellen, alle Zellen + Stack)
+    %   Wiederholen: ab Schritt 6, insgesamt 13-mal (Schritte 6 bis zum Schritt davor)
+    % Alte Temperaturprofile ("Zelle 1: 25, 15, 5") werden beim Einlesen umgewandelt:
+    % je Profilschritt ein Temperaturschritt und eine EIS-Messung (Ziel aus dem EIS-Panel).
 
-    function lines = profileToText(P)
-        lines = cell(1, size(P, 2));
-        for k = 1:size(P, 2)
-            lines{k} = sprintf('%s: %s', cellLabel(k), ...
-                strjoin(arrayfun(@(x) sprintf('%g', x), P(:, k).', 'UniformOutput', false), ', '));
+    function st = newStep(type, n)
+        st = struct('type', type, 'temps', nan(1, n), 'minutes', NaN, 'target', '', 'from', NaN, 'count', NaN);
+        switch type
+            case STEP_TEMP,   st.temps = DEFAULT_TSET_DEGC * ones(1, n);
+            case STEP_WAIT,   st.minutes = AUTO_WAIT_DEFAULT_MIN;
+            case STEP_EIS,    st.target = 'ALL';
+            case STEP_REPEAT, st.from = 1;  st.count = AUTO_REPEAT_DEFAULT;
         end
     end
 
-    function [P, msg] = parseProfileText(txt, n)
-        P = [];  msg = '';
+    function lines = programToText(P)
+        lines = arrayfun(@(i) sprintf('%d. %s', i, stepToText(P(i))), 1:numel(P), 'UniformOutput', false);
+    end
+
+    function s = stepToText(st)
+        switch st.type
+            case STEP_TEMP
+                set_ = find(~isnan(st.temps));
+                if ~isempty(set_) && numel(set_) == numel(st.temps) && all(st.temps == st.temps(1))
+                    s = sprintf('Temperatur: alle = %g', st.temps(1));
+                else
+                    s = ['Temperatur: ' strjoin(arrayfun(@(k) sprintf('Zelle %d = %g', k, st.temps(k)), set_, ...
+                                                         'UniformOutput', false), ', ')];
+                end
+            case STEP_WAIT
+                s = sprintf('Warten: %g min', st.minutes);
+            case STEP_EIS
+                s = ['EIS: ' autoTargetText(st.target)];
+            case STEP_REPEAT
+                s = sprintf('Wiederholen: ab Schritt %d, insgesamt %d-mal', st.from, st.count);
+            otherwise
+                s = '?';
+        end
+    end
+
+    function s = stepShortText(st)
+        switch st.type
+            case STEP_TEMP
+                set_ = find(~isnan(st.temps));
+                s = ['T ' strjoin(arrayfun(@(k) sprintf('%g', st.temps(k)), set_, 'UniformOutput', false), '/') ' °C'];
+            case STEP_WAIT,   s = sprintf('%g min', st.minutes);
+            case STEP_EIS,    s = ['EIS ' autoTargetText(st.target)];
+            case STEP_REPEAT, s = sprintf('ab %d ×%d', st.from, st.count);
+            otherwise,        s = '?';
+        end
+    end
+
+    % nBm: Zahl der BMs (EIS-Ziele), n: Zahl der Zellen mit BM und PM (Temperaturvorgaben)
+    function [P, msg] = parseProgramText(txt, nBm, n)
+        P = struct('type', {}, 'temps', {}, 'minutes', {}, 'target', {}, 'from', {}, 'count', {});
+        msg = '';
         if ischar(txt)
             txt = cellstr(txt);                          % mehrzeiliges Edit-Feld: Zeichenmatrix
         end
         txt = splitlines(strjoin(reshape(cellstr(txt), 1, []), newline));
-        cols = cell(1, n);
-        nextCol = 1;
+        lines = {};
         for i = 1:numel(txt)
             line = strtrim(txt{i});
-            if isempty(line) || line(1) == '#'
-                continue;
+            if ~isempty(line) && line(1) ~= '#'
+                lines{end + 1} = line; %#ok<AGROW>
             end
+        end
+        if isempty(lines)
+            msg = 'Schrittliste ist leer';
+            return;
+        end
+        if isempty(regexpi(strjoin(lines, newline), STEP_KEYWORD_PATTERN, 'once', 'lineanchors'))
+            [P, msg] = convertOldProfile(lines, nBm, n);     % altes Temperaturprofil
+            return;
+        end
+        for i = 1:numel(lines)
+            line = regexprep(lines{i}, '^\d+\s*[.):]\s*', '');   % fuehrende Schrittnummer
+            colon = strfind(line, ':');
+            if isempty(colon)
+                msg = sprintf('Zeile "%s": Schritttyp fehlt (Temperatur:, Warten:, EIS:, Wiederholen:)', lines{i});
+                return;
+            end
+            key  = lower(strtrim(line(1:colon(1) - 1)));
+            rest = strtrim(line(colon(1) + 1:end));
+            switch key
+                case {'temperatur', 'temp', 't'}
+                    [st, err] = parseTempStep(rest, n);
+                case {'warten', 'wartezeit', 'pause'}
+                    [st, err] = parseWaitStep(rest, n);
+                case {'eis', 'messung', 'eis-messung'}
+                    [st, err] = parseEisStep(rest, nBm, n);
+                case {'wiederholen', 'wiederholung'}
+                    [st, err] = parseRepeatStep(rest, n);
+                otherwise
+                    err = sprintf('Schritttyp "%s" unbekannt', key);
+            end
+            if ~isempty(err)
+                msg = sprintf('Zeile "%s": %s', lines{i}, err);
+                return;
+            end
+            P(end + 1) = st; %#ok<AGROW>
+        end
+        msg = checkProgram(P, nBm, n);
+    end
+
+    function [st, err] = parseTempStep(rest, n)
+        st = newStep(STEP_TEMP, n);
+        st.temps = nan(1, n);
+        err = '';
+        parts = strtrim(regexp(rest, '[,;]', 'split'));
+        parts = parts(~cellfun(@isempty, parts));
+        pos = 0;                                         % Zaehler fuer Werte ohne Zellangabe
+        for p = 1:numel(parts)
+            item = parts{p};
+            eq = strfind(item, '=');
+            if isempty(eq)
+                pos = pos + 1;
+                cells = pos;
+                value = item;
+            else
+                label = lower(strtrim(item(1:eq(1) - 1)));
+                value = item(eq(1) + 1:end);
+                if ~isempty(regexp(label, '^(alle|all)$', 'once'))
+                    cells = 1:n;
+                else
+                    tok = regexp(label, '^(?:zelle|z)\s*(\d+)$', 'tokens', 'once');
+                    if isempty(tok)
+                        err = sprintf('"%s" nicht erkannt (z. B. "Zelle 1 = 25" oder "alle = 25")', item);
+                        return;
+                    end
+                    cells = str2double(tok{1});
+                end
+            end
+            value = strtrim(regexprep(value, '°?\s*C$', ''));
+            if strcmp(value, '-')
+                continue;                                % Zelle bleibt unveraendert
+            end
+            v = str2double(value);
+            if isnan(v)
+                err = sprintf('"%s": keine Zahl', item);
+                return;
+            end
+            if any(cells < 1 | cells > n)
+                err = sprintf('nur Zelle 1 bis %d haben BM und PM', n);
+                return;
+            end
+            st.temps(cells) = v;
+        end
+    end
+
+    function [st, err] = parseWaitStep(rest, n)
+        st = newStep(STEP_WAIT, n);
+        err = '';
+        tok = regexpi(rest, '^([\d.]+)\s*(min|m|s|sek|h|std)?\.?$', 'tokens', 'once');
+        if isempty(tok)
+            err = 'Wartezeit nicht erkannt (z. B. "5 min", "30 s", "1.5 h")';
+            return;
+        end
+        v = str2double(tok{1});
+        switch lower(tok{2})
+            case {'s', 'sek'},  v = v / SECONDS_PER_MINUTE;
+            case {'h', 'std'},  v = v * MINUTES_PER_HOUR;
+        end
+        st.minutes = v;
+    end
+
+    function [st, err] = parseEisStep(rest, nBm, n)
+        st = newStep(STEP_EIS, n);
+        err = '';
+        r = lower(regexprep(strtrim(rest), '\s+', ' '));
+        tok = regexp(r, '^(?:zelle|z)\s*(\d+)$', 'tokens', 'once');
+        if ~isempty(tok)
+            k = str2double(tok{1});
+            if k < 1 || k > nBm
+                err = sprintf('es gibt nur Zelle 1 bis %d', nBm);
+                return;
+            end
+            st.target = sprintf('C%d', k);
+        elseif strcmp(r, 'stack')
+            st.target = 'S';
+        elseif ~isempty(regexp(r, '^(alle( zellen)? ?\+ ?stack|alls)$', 'once'))
+            st.target = 'ALLS';
+        elseif ~isempty(regexp(r, '^(alle( zellen)?|all)$', 'once'))
+            st.target = 'ALL';
+        else
+            err = 'Ziel nicht erkannt (Zelle k, Stack, alle Zellen, alle Zellen + Stack)';
+        end
+    end
+
+    function [st, err] = parseRepeatStep(rest, n)
+        st = newStep(STEP_REPEAT, n);
+        err = '';
+        nums = str2double(regexp(rest, '\d+', 'match'));
+        if numel(nums) ~= 2
+            err = 'erwartet: "ab Schritt <Nr>, insgesamt <Anzahl>-mal"';
+            return;
+        end
+        st.from  = nums(1);
+        st.count = nums(2);
+    end
+
+    % altes Format (eine Zeile je Zelle) -> je Profilschritt Temperatur + EIS (Ziel aus dem EIS-Panel)
+    function [P, msg] = convertOldProfile(lines, nBm, n)
+        P = struct('type', {}, 'temps', {}, 'minutes', {}, 'target', {}, 'from', {}, 'count', {});
+        [T, msg] = parseOldProfileText(lines, n);
+        if ~isempty(msg)
+            msg = ['weder Schrittliste noch altes Temperaturprofil: ' msg];
+            return;
+        end
+        target = panelTarget();
+        for s = 1:size(T, 1)
+            st = newStep(STEP_TEMP, n);
+            st.temps = T(s, :);
+            P(end + 1) = st; %#ok<AGROW>
+            st = newStep(STEP_EIS, n);
+            st.target = target;
+            P(end + 1) = st; %#ok<AGROW>
+        end
+        msg = checkProgram(P, nBm, n);
+    end
+
+    % EIS-Ziel, das im EIS-Panel unter "Messung" gewaehlt ist
+    function t = panelTarget()
+        nBm = numel(cfg.bmAddr);
+        sel = get(hTarget, 'Value');
+        if sel <= nBm
+            t = sprintf('C%d', sel);
+        elseif sel == nBm + 1
+            t = 'S';
+        elseif sel == nBm + 2
+            t = 'ALL';
+        else
+            t = 'ALLS';
+        end
+    end
+
+    % altes Temperaturprofil: "Zelle 1: 25, 15, 5" / "alle: 25, 15" / Zeile ohne Bezeichnung
+    function [P, msg] = parseOldProfileText(lines, n)
+        P = [];  msg = '';
+        cols = cell(1, n);
+        nextCol = 1;
+        for i = 1:numel(lines)
+            line = lines{i};
             label = '';
             values = line;
             colon = strfind(line, ':');
@@ -1810,7 +2344,7 @@ function MM_GUI()
             parts = parts(~cellfun(@isempty, parts));
             v = str2double(parts);
             if isempty(v) || any(isnan(v))
-                msg = sprintf('Zeile "%s": keine gültigen Zahlen (Dezimalpunkt verwenden, Werte mit Komma, Semikolon oder Leerzeichen trennen)', line);
+                msg = sprintf('Zeile "%s" nicht erkannt', line);
                 return;
             end
             if isempty(label)
@@ -1820,7 +2354,7 @@ function MM_GUI()
             else
                 tok = regexpi(label, '^(?:zelle|cell|z)\s*(\d+)', 'tokens', 'once');
                 if isempty(tok)
-                    msg = sprintf('Zeile "%s": Bezeichnung nicht erkannt (z. B. "Zelle 1:" oder "alle:")', line);
+                    msg = sprintf('Zeile "%s": Bezeichnung nicht erkannt', line);
                     return;
                 end
                 targets = str2double(tok{1});
@@ -1834,141 +2368,188 @@ function MM_GUI()
             end
             nextCol = max(targets) + 1;
         end
-        missing = find(cellfun(@isempty, cols));
-        if ~isempty(missing)
-            msg = sprintf('Profil fehlt für Zelle %s', strjoin(arrayfun(@num2str, missing, 'UniformOutput', false), ', '));
+        missing = cellfun(@isempty, cols);
+        if all(missing)
+            msg = 'keine Werte';
             return;
         end
-        len = cellfun(@numel, cols);
-        if any(len ~= len(1))
-            msg = sprintf('Alle Zellen brauchen gleich viele Schritte (jetzt: %s)', ...
-                          strjoin(arrayfun(@num2str, len, 'UniformOutput', false), ' / '));
+        len = max(cellfun(@numel, cols));
+        for c = find(missing)
+            cols{c} = nan(len, 1);                       % Zelle ohne Zeile: nicht temperiert
+        end
+        if any(cellfun(@numel, cols) ~= len)
+            msg = 'alle Zellen brauchen gleich viele Schritte';
             return;
         end
         P = [cols{:}];
-        msg = checkProfile(P);
     end
 
-    function msg = checkProfile(P)
+    function msg = checkProgram(P, nBm, n)
         msg = '';
         if isempty(P)
-            msg = 'Profil ist leer';
-        elseif any(isnan(P(:)))
-            msg = 'Profil enthält ungültige Werte';
-        elseif any(P(:) < PROFILE_T_MIN_DEGC | P(:) > PROFILE_T_MAX_DEGC)
-            msg = sprintf('Solltemperaturen müssen zwischen %g und %g °C liegen (Bereich des PM)', ...
-                          PROFILE_T_MIN_DEGC, PROFILE_T_MAX_DEGC);
+            msg = 'Schrittliste ist leer';
+            return;
+        end
+        if n == 0 && any(strcmp({P.type}, STEP_TEMP))
+            msg = 'Temperaturschritt, aber keine Zelle mit BM und PM';
+            return;
+        end
+        for i = 1:numel(P)
+            st = P(i);
+            switch st.type
+                case STEP_TEMP
+                    t = st.temps(~isnan(st.temps));
+                    if numel(st.temps) ~= n
+                        msg = sprintf('Schritt %d: Zahl der Zellen passt nicht (Liste neu laden)', i);
+                    elseif isempty(t)
+                        msg = sprintf('Schritt %d: keine Solltemperatur angegeben', i);
+                    elseif any(t < PROFILE_T_MIN_DEGC | t > PROFILE_T_MAX_DEGC)
+                        msg = sprintf('Schritt %d: Solltemperaturen müssen zwischen %g und %g °C liegen', ...
+                                      i, PROFILE_T_MIN_DEGC, PROFILE_T_MAX_DEGC);
+                    end
+                case STEP_WAIT
+                    if ~(st.minutes > 0) || st.minutes > AUTO_WAIT_MAX_MIN
+                        msg = sprintf('Schritt %d: Wartezeit muss > 0 und <= %g min sein', i, AUTO_WAIT_MAX_MIN);
+                    end
+                case STEP_EIS
+                    if st.target(1) == 'C' && str2double(st.target(2:end)) > nBm
+                        msg = sprintf('Schritt %d: %s hat kein BM', i, autoTargetText(st.target));
+                    end
+                case STEP_REPEAT
+                    if ~(st.from >= 1 && st.from < i && st.from == round(st.from))
+                        msg = sprintf('Schritt %d: Wiederholung muss bei einem früheren Schritt (1 bis %d) beginnen', i, i - 1);
+                    elseif ~(st.count >= 1 && st.count <= AUTO_REPEAT_MAX && st.count == round(st.count))
+                        msg = sprintf('Schritt %d: Anzahl muss eine ganze Zahl von 1 bis %d sein', i, AUTO_REPEAT_MAX);
+                    elseif all(strcmp({P(st.from:i - 1).type}, STEP_REPEAT))
+                        msg = sprintf('Schritt %d: der wiederholte Bereich braucht mindestens einen anderen Schritt', i);
+                    end
+                otherwise
+                    msg = sprintf('Schritt %d: unbekannter Schritttyp', i);
+            end
+            if ~isempty(msg)
+                return;
+            end
         end
     end
 
     %% =========================================================================
-    %  Temperaturprofil: Editor (Tabelle, Diagramm mit verschiebbaren Punkten, Text)
+    %  Schrittliste: Editor (Tabelle + Text)
     %  =========================================================================
+    % Tabelle: eine Zeile je Schritt. Spalte "Typ" waehlt den Schritttyp; je nach Typ werden
+    % die passenden Spalten verwendet (Temperaturen je Zelle, Wartezeit, EIS-Ziel, ab Schritt /
+    % Anzahl). Leeres Temperaturfeld = Solltemperatur der Zelle bleibt unveraendert.
     function openProfileEditor()
         if ~isempty(profileEdit.fig) && isvalid(profileEdit.fig)
             figure(profileEdit.fig);                    % schon offen: nach vorne holen
             return;
         end
-        n = autoCellCount();
-        if n == 0
-            logMsg('Profil: zuerst verbinden - je Zelle werden ein BM und ein PM gebraucht');
+        if isempty(cfg.bmAddr)
+            logMsg('Schrittliste: zuerst verbinden - die Zahl der Zellen kommt vom MM');
             return;
         end
-        resizeProfile();
+        resizeProgram();
+        n = autoCellCount();
         pe = struct();
-        pe.P      = autoProfile;
-        pe.selRow = [];                                  % markierter Schritt (Tabelle / Diagramm)
-        pe.drag   = [];
-        pe.fig = figure('Name', 'Temperaturprofil (Automatik)', 'NumberTitle', 'off', 'MenuBar', 'none', ...
-            'ToolBar', 'none', 'Units', 'pixels', 'Position', [120 120 PROFILE_FIG_SIZE_PX], ...
-            'WindowButtonMotionFcn', @(~, ~) profileDragMove(), 'WindowButtonUpFcn', @(~, ~) profileDragEnd());
-        pe.table = uitable(pe.fig, 'Units', 'normalized', 'Position', [0.02 0.50 0.40 0.46], ...
-            'ColumnEditable', true(1, n), 'ColumnName', arrayfun(@(k) sprintf('Zelle %d [°C]', k), 1:n, 'UniformOutput', false), ...
-            'CellEditCallback', @(src, ev) profileCellEdited(src, ev), ...
+        pe.P      = autoProgram;
+        pe.n      = n;
+        pe.nBm    = numel(cfg.bmAddr);
+        pe.selRow = [];
+        pe.targets = [arrayfun(@(k) sprintf('C%d', k), 1:pe.nBm, 'UniformOutput', false), {'S', 'ALL', 'ALLS'}];
+        pe.targetText = cellfun(@autoTargetText, pe.targets, 'UniformOutput', false);
+        pe.colTemp   = 1 + (1:n);                        % Spaltenindizes der Tabelle
+        pe.colWait   = n + 2;
+        pe.colTarget = n + 3;
+        pe.colFrom   = n + 4;
+        pe.colCount  = n + 5;
+        pe.fig = figure('Name', 'Schrittliste (Automatik)', 'NumberTitle', 'off', 'MenuBar', 'none', ...
+            'ToolBar', 'none', 'Units', 'pixels', 'Position', [120 120 PROFILE_FIG_SIZE_PX]);
+        colNames = [{'Typ'}, arrayfun(@(k) sprintf('Zelle %d [°C]', k), 1:n, 'UniformOutput', false), ...
+                    {'Wartezeit [min]', 'EIS-Ziel', 'ab Schritt', 'Anzahl'}];
+        colFormat = [{STEP_TYPE_TEXT}, repmat({'char'}, 1, n), {'char', pe.targetText, 'char', 'char'}];
+        pe.table = uitable(pe.fig, 'Units', 'normalized', 'Position', [0.02 0.42 0.96 0.55], ...
+            'ColumnName', colNames, 'ColumnFormat', colFormat, 'ColumnEditable', true(1, numel(colNames)), ...
+            'CellEditCallback', @(src, ev) profileCellEdited(ev), ...
             'CellSelectionCallback', @(~, ev) profileCellSelected(ev));
-        % Schritte bearbeiten: wirken auf den markierten Schritt (Klick in die Tabelle oder auf
-        % einen Punkt im Diagramm)
-        uicontrol(pe.fig, 'Style', 'pushbutton', 'String', 'Davor einfügen', 'Units', 'normalized', 'Position', [0.02 0.43 0.095 0.055], ...
-            'TooltipString', 'Zwischenschritt vor dem markierten Schritt (Mittelwert der Nachbarn)', ...
+        uicontrol(pe.fig, 'Style', 'text', 'String', 'Neuer Schritt:', 'Units', 'normalized', ...
+            'Position', [0.02 0.355 0.08 0.04], 'HorizontalAlignment', 'left');
+        pe.newType = uicontrol(pe.fig, 'Style', 'popupmenu', 'String', STEP_TYPE_TEXT, 'Units', 'normalized', ...
+            'Position', [0.10 0.36 0.11 0.045]);
+        uicontrol(pe.fig, 'Style', 'pushbutton', 'String', 'Davor einfügen', 'Units', 'normalized', 'Position', [0.22 0.355 0.095 0.05], ...
+            'TooltipString', 'neuen Schritt vor dem markierten Schritt einfügen (ohne Markierung: am Anfang)', ...
             'Callback', @(~, ~) profileInsertStep(PROFILE_INSERT_BEFORE));
-        uicontrol(pe.fig, 'Style', 'pushbutton', 'String', 'Danach einfügen', 'Units', 'normalized', 'Position', [0.12 0.43 0.095 0.055], ...
-            'TooltipString', 'Zwischenschritt nach dem markierten Schritt (Mittelwert der Nachbarn; ohne Markierung am Ende)', ...
+        uicontrol(pe.fig, 'Style', 'pushbutton', 'String', 'Danach einfügen', 'Units', 'normalized', 'Position', [0.32 0.355 0.095 0.05], ...
+            'TooltipString', 'neuen Schritt nach dem markierten Schritt einfügen (ohne Markierung: am Ende)', ...
             'Callback', @(~, ~) profileInsertStep(PROFILE_INSERT_AFTER));
-        uicontrol(pe.fig, 'Style', 'pushbutton', 'String', 'Löschen', 'Units', 'normalized', 'Position', [0.22 0.43 0.095 0.055], ...
+        uicontrol(pe.fig, 'Style', 'pushbutton', 'String', 'Löschen', 'Units', 'normalized', 'Position', [0.42 0.355 0.08 0.05], ...
             'TooltipString', 'markierten (sonst letzten) Schritt löschen', 'Callback', @(~, ~) profileRemoveStep());
-        uicontrol(pe.fig, 'Style', 'pushbutton', 'String', 'Alle wie Zelle 1', 'Units', 'normalized', 'Position', [0.32 0.43 0.10 0.055], ...
-            'TooltipString', 'Temperaturen von Zelle 1 für alle Zellen übernehmen', 'Callback', @(~, ~) profileCopyFirst());
-        uicontrol(pe.fig, 'Style', 'pushbutton', 'String', '▲ nach oben', 'Units', 'normalized', 'Position', [0.02 0.365 0.095 0.055], ...
+        uicontrol(pe.fig, 'Style', 'pushbutton', 'String', '▲ nach oben', 'Units', 'normalized', 'Position', [0.505 0.355 0.085 0.05], ...
             'TooltipString', 'markierten Schritt eine Position früher ausführen', ...
             'Callback', @(~, ~) profileMoveStep(PROFILE_INSERT_BEFORE));
-        uicontrol(pe.fig, 'Style', 'pushbutton', 'String', '▼ nach unten', 'Units', 'normalized', 'Position', [0.12 0.365 0.095 0.055], ...
+        uicontrol(pe.fig, 'Style', 'pushbutton', 'String', '▼ nach unten', 'Units', 'normalized', 'Position', [0.595 0.355 0.085 0.05], ...
             'TooltipString', 'markierten Schritt eine Position später ausführen', ...
             'Callback', @(~, ~) profileMoveStep(PROFILE_INSERT_AFTER));
         pe.selText = uicontrol(pe.fig, 'Style', 'text', 'String', 'kein Schritt markiert', 'Units', 'normalized', ...
-            'Position', [0.22 0.365 0.20 0.045], 'HorizontalAlignment', 'left');
-        pe.ax = axes(pe.fig, 'Units', 'normalized', 'Position', [0.50 0.47 0.47 0.47]);
-        pe.status = uicontrol(pe.fig, 'Style', 'text', 'String', '', 'Units', 'normalized', 'Position', [0.46 0.36 0.52 0.05], ...
+            'Position', [0.69 0.355 0.29 0.04], 'HorizontalAlignment', 'left');
+        pe.status = uicontrol(pe.fig, 'Style', 'text', 'String', '', 'Units', 'normalized', 'Position', [0.02 0.30 0.96 0.045], ...
             'HorizontalAlignment', 'left', 'FontWeight', 'bold');
-        uicontrol(pe.fig, 'Style', 'text', 'Units', 'normalized', 'Position', [0.02 0.27 0.62 0.07], 'HorizontalAlignment', 'left', ...
-            'String', sprintf(['Texteingabe: eine Zeile je Zelle, Werte je Schritt mit Komma getrennt, Dezimalpunkt,\n' ...
-                               'z. B. "Zelle 1: 25, 15, 5, 25" oder "alle: 25, 15, 5" (Zeilen mit # = Kommentar)']));
-        pe.text = uicontrol(pe.fig, 'Style', 'edit', 'Max', 2, 'Min', 0, 'Units', 'normalized', 'Position', [0.02 0.03 0.62 0.24], ...
+        uicontrol(pe.fig, 'Style', 'text', 'Units', 'normalized', 'Position', [0.02 0.235 0.62 0.065], 'HorizontalAlignment', 'left', ...
+            'String', sprintf(['Texteingabe: ein Schritt je Zeile, z. B. "Temperatur: Zelle 1 = 25, Zelle 2 = 35", "Warten: 5 min",\n' ...
+                               '"EIS: alle Zellen", "Wiederholen: ab Schritt 6, insgesamt 13-mal" (# = Kommentar)']));
+        pe.text = uicontrol(pe.fig, 'Style', 'edit', 'Max', 2, 'Min', 0, 'Units', 'normalized', 'Position', [0.02 0.03 0.62 0.20], ...
             'HorizontalAlignment', 'left', 'FontName', 'Consolas', 'BackgroundColor', 'w');
-        uicontrol(pe.fig, 'Style', 'pushbutton', 'String', 'Text → Tabelle', 'Units', 'normalized', 'Position', [0.66 0.19 0.15 0.07], ...
+        uicontrol(pe.fig, 'Style', 'pushbutton', 'String', 'Text → Tabelle', 'Units', 'normalized', 'Position', [0.66 0.17 0.15 0.06], ...
             'Callback', @(~, ~) profileTextApply());
-        uicontrol(pe.fig, 'Style', 'pushbutton', 'String', 'Laden ...', 'Units', 'normalized', 'Position', [0.66 0.11 0.15 0.07], ...
-            'Callback', @(~, ~) profileLoad());
-        uicontrol(pe.fig, 'Style', 'pushbutton', 'String', 'Speichern ...', 'Units', 'normalized', 'Position', [0.66 0.03 0.15 0.07], ...
+        uicontrol(pe.fig, 'Style', 'pushbutton', 'String', 'Laden ...', 'Units', 'normalized', 'Position', [0.66 0.10 0.15 0.06], ...
+            'TooltipString', 'Schrittliste laden (alte Temperaturprofile werden umgewandelt)', 'Callback', @(~, ~) profileLoad());
+        uicontrol(pe.fig, 'Style', 'pushbutton', 'String', 'Speichern ...', 'Units', 'normalized', 'Position', [0.66 0.03 0.15 0.06], ...
             'Callback', @(~, ~) profileSave());
-        uicontrol(pe.fig, 'Style', 'pushbutton', 'String', 'Übernehmen', 'Units', 'normalized', 'Position', [0.83 0.11 0.15 0.07], ...
-            'FontWeight', 'bold', 'TooltipString', 'Profil für die Automatik übernehmen', 'Callback', @(~, ~) profileApply());
-        uicontrol(pe.fig, 'Style', 'pushbutton', 'String', 'Schließen', 'Units', 'normalized', 'Position', [0.83 0.03 0.15 0.07], ...
+        uicontrol(pe.fig, 'Style', 'pushbutton', 'String', 'Übernehmen', 'Units', 'normalized', 'Position', [0.83 0.10 0.15 0.06], ...
+            'FontWeight', 'bold', 'TooltipString', 'Schrittliste für die Automatik übernehmen', 'Callback', @(~, ~) profileApply());
+        uicontrol(pe.fig, 'Style', 'pushbutton', 'String', 'Schließen', 'Units', 'normalized', 'Position', [0.83 0.03 0.15 0.06], ...
             'Callback', @(~, ~) delete(pe.fig));
         profileEdit = pe;
         profileRefresh(true);
     end
 
-    % Tabelle und Diagramm (und auf Wunsch den Text) aus profileEdit.P neu aufbauen
+    % Tabelle (und auf Wunsch den Text) aus profileEdit.P neu aufbauen
     function profileRefresh(updateText)
-        P = profileEdit.P;
-        numSteps = size(P, 1);
-        sel = profileEdit.selRow;
-        if ~isempty(sel) && sel > numSteps
-            sel = [];
+        pe = profileEdit;
+        P = pe.P;
+        numSteps = numel(P);
+        if ~isempty(pe.selRow) && pe.selRow > numSteps
             profileEdit.selRow = [];
         end
-        rowNames = arrayfun(@(s) sprintf('Schritt %d', s), 1:numSteps, 'UniformOutput', false);
+        sel = profileEdit.selRow;
+        data = repmat({''}, numSteps, pe.colCount);
+        for i = 1:numSteps
+            st = P(i);
+            data{i, 1} = STEP_TYPE_TEXT{strcmp(STEP_TYPES, st.type)};
+            switch st.type
+                case STEP_TEMP
+                    for k = 1:pe.n
+                        if ~isnan(st.temps(k))
+                            data{i, pe.colTemp(k)} = sprintf('%g', st.temps(k));
+                        end
+                    end
+                case STEP_WAIT
+                    data{i, pe.colWait} = sprintf('%g', st.minutes);
+                case STEP_EIS
+                    data{i, pe.colTarget} = pe.targetText{strcmp(pe.targets, st.target)};
+                case STEP_REPEAT
+                    data{i, pe.colFrom}  = sprintf('%d', st.from);
+                    data{i, pe.colCount} = sprintf('%d', st.count);
+            end
+        end
+        rowNames = arrayfun(@(s) sprintf('%d', s), 1:numSteps, 'UniformOutput', false);
         if ~isempty(sel)
             rowNames{sel} = [rowNames{sel} PROFILE_SEL_MARK];
-            set(profileEdit.selText, 'String', sprintf('markiert: Schritt %d', sel));
+            set(pe.selText, 'String', sprintf('markiert: Schritt %d', sel));
         else
-            set(profileEdit.selText, 'String', 'kein Schritt markiert');
+            set(pe.selText, 'String', 'kein Schritt markiert');
         end
-        set(profileEdit.table, 'Data', P, 'RowName', rowNames);
-        a = profileEdit.ax;
-        cla(a);
-        hold(a, 'on'); grid(a, 'on'); box(a, 'on');
-        colors = get(a, 'ColorOrder');
-        profileEdit.lines = gobjects(1, size(P, 2));
-        for k = 1:size(P, 2)
-            c = colors(mod(k - 1, size(colors, 1)) + 1, :);
-            profileEdit.lines(k) = plot(a, 1:numSteps, P(:, k), '-o', 'Color', c, 'MarkerFaceColor', c, ...
-                'LineWidth', PROFILE_LINE_WIDTH, 'MarkerSize', PROFILE_MARKER_SIZE, 'DisplayName', cellLabel(k), ...
-                'ButtonDownFcn', @(~, ~) profileDragStart(k));
-        end
-        xlim(a, [0.5, numSteps + 0.5]);
-        ylim(a, [PROFILE_T_MIN_DEGC, PROFILE_T_MAX_DEGC]);
-        set(a, 'XTick', 1:numSteps);
-        if isempty(sel)                                  % markierter Schritt: nur in der Achsenbeschriftung
-            xlabel(a, 'Schritt');
-        else
-            xlabel(a, sprintf('Schritt   (markiert: Schritt %d)', sel));
-        end
-        ylabel(a, 'T Soll [°C]');
-        title(a, sprintf('Punkte mit der Maus verschieben (Raster %g K)', PROFILE_DRAG_STEP_K));
-        legend(a, 'Location', 'best', 'Interpreter', 'none');
+        set(pe.table, 'Data', data, 'RowName', rowNames);
         if updateText
-            set(profileEdit.text, 'String', profileToText(P));
+            set(pe.text, 'String', programToText(P));
         end
     end
 
@@ -1980,47 +2561,62 @@ function MM_GUI()
         set(profileEdit.status, 'String', msg, 'TooltipString', msg, 'ForegroundColor', color);
     end
 
-    function profileDragStart(k)
-        cp = get(profileEdit.ax, 'CurrentPoint');
-        stepIndex = min(max(round(cp(1, 1)), 1), size(profileEdit.P, 1));
-        profileEdit.drag = [stepIndex, k];
-        profileEdit.selRow = stepIndex;                 % Klick auf einen Punkt markiert den Schritt
-    end
-
-    function profileDragMove()
-        if isempty(profileEdit.fig) || ~isvalid(profileEdit.fig) || isempty(profileEdit.drag)
-            return;
-        end
-        cp = get(profileEdit.ax, 'CurrentPoint');
-        t = round(cp(1, 2) / PROFILE_DRAG_STEP_K) * PROFILE_DRAG_STEP_K;
-        t = min(max(t, PROFILE_T_MIN_DEGC), PROFILE_T_MAX_DEGC);
-        stepIndex = profileEdit.drag(1);  k = profileEdit.drag(2);
-        if profileEdit.P(stepIndex, k) ~= t
-            profileEdit.P(stepIndex, k) = t;
-            set(profileEdit.lines(k), 'YData', profileEdit.P(:, k));
-            set(profileEdit.table, 'Data', profileEdit.P);
-        end
-    end
-
-    function profileDragEnd()
-        if isempty(profileEdit.fig) || ~isvalid(profileEdit.fig) || isempty(profileEdit.drag)
-            return;
-        end
-        profileEdit.drag = [];
-        profileRefresh(true);
-        profileStatus('geändert - mit "Übernehmen" für die Automatik setzen', false);
-    end
-
-    function profileCellEdited(src, ev)
-        P = get(src, 'Data');
+    % eine Zelle der Tabelle geaendert: in die Schrittliste uebernehmen (ungueltig -> alter Wert)
+    function profileCellEdited(ev)
+        pe = profileEdit;
+        i = ev.Indices(1);  c = ev.Indices(2);
+        st = pe.P(i);
         v = ev.NewData;
-        if ~isnumeric(v) || ~isscalar(v) || isnan(v) || v < PROFILE_T_MIN_DEGC || v > PROFILE_T_MAX_DEGC
-            P(ev.Indices(1), ev.Indices(2)) = ev.PreviousData;
-            profileStatus(sprintf('ungültiger Wert - erlaubt sind %g bis %g °C', PROFILE_T_MIN_DEGC, PROFILE_T_MAX_DEGC), true);
+        err = '';
+        if c == 1                                        % Typ geaendert: Schritt mit Standardwerten
+            type = STEP_TYPES{strcmp(STEP_TYPE_TEXT, v)};
+            if ~strcmp(type, st.type)
+                st = newStep(type, pe.n);
+                if strcmp(type, STEP_REPEAT)
+                    st.from = max(1, i - 1);
+                end
+            end
+        elseif strcmp(st.type, STEP_TEMP) && any(c == pe.colTemp)
+            k = find(c == pe.colTemp);
+            x = strtrim(strrep(char(v), ',', '.'));
+            if isempty(x) || strcmp(x, '-')
+                st.temps(k) = NaN;                       % Zelle bleibt unveraendert
+            elseif isnan(str2double(x)) || str2double(x) < PROFILE_T_MIN_DEGC || str2double(x) > PROFILE_T_MAX_DEGC
+                err = sprintf('ungültige Temperatur - erlaubt sind %g bis %g °C (leer = unverändert)', PROFILE_T_MIN_DEGC, PROFILE_T_MAX_DEGC);
+            else
+                st.temps(k) = str2double(x);
+            end
+        elseif strcmp(st.type, STEP_WAIT) && c == pe.colWait
+            x = str2double(strrep(char(v), ',', '.'));
+            if ~(x > 0) || x > AUTO_WAIT_MAX_MIN
+                err = sprintf('Wartezeit muss > 0 und <= %g min sein', AUTO_WAIT_MAX_MIN);
+            else
+                st.minutes = x;
+            end
+        elseif strcmp(st.type, STEP_EIS) && c == pe.colTarget
+            st.target = pe.targets{strcmp(pe.targetText, v)};
+        elseif strcmp(st.type, STEP_REPEAT) && (c == pe.colFrom || c == pe.colCount)
+            x = str2double(char(v));
+            if c == pe.colFrom
+                if ~(x >= 1 && x < i && x == round(x))
+                    err = sprintf('"ab Schritt" muss ein früherer Schritt sein (1 bis %d)', i - 1);
+                else
+                    st.from = x;
+                end
+            elseif ~(x >= 1 && x <= AUTO_REPEAT_MAX && x == round(x))
+                err = sprintf('Anzahl muss eine ganze Zahl von 1 bis %d sein', AUTO_REPEAT_MAX);
+            else
+                st.count = x;
+            end
         else
-            profileStatus('geändert - mit "Übernehmen" für die Automatik setzen', false);
+            err = sprintf('dieses Feld gehört nicht zum Schritttyp "%s"', STEP_TYPE_TEXT{strcmp(STEP_TYPES, st.type)});
         end
-        profileEdit.P = P;
+        if isempty(err)
+            profileEdit.P(i) = st;
+            profileStatus('geändert - mit "Übernehmen" für die Automatik setzen', false);
+        else
+            profileStatus(err, true);
+        end
         profileRefresh(true);
     end
 
@@ -2031,30 +2627,40 @@ function MM_GUI()
         end
     end
 
-    % Zwischenschritt vor (direction = PROFILE_INSERT_BEFORE) oder nach dem markierten Schritt.
-    % Temperaturen: Mittelwert der beiden Nachbarschritte (im Raster PROFILE_DRAG_STEP_K),
-    % am Anfang/Ende eine Kopie des Randschritts. Ohne Markierung: am Anfang bzw. Ende.
-    function profileInsertStep(direction)
-        P = profileEdit.P;
-        numSteps = size(P, 1);
-        r = profileEdit.selRow;
-        if isempty(r)
-            if direction == PROFILE_INSERT_AFTER
-                r = numSteps;
-            else
-                r = 1;
+    % Nach Einfuegen / Loeschen / Verschieben: "ab Schritt" der Wiederholungen nachfuehren.
+    % newPos(i) = neue Nummer des bisherigen Schritts i
+    function P = remapRepeats(P, newPos)
+        for i = 1:numel(P)
+            if strcmp(P(i).type, STEP_REPEAT) && P(i).from >= 1 && P(i).from <= numel(newPos)
+                P(i).from = newPos(P(i).from);
             end
         end
-        if direction == PROFILE_INSERT_AFTER
-            neighbours = [r, r + 1];
-            pos = r + 1;                                 % Index des neuen Schritts
+    end
+
+    function profileInsertStep(direction)
+        P = profileEdit.P;
+        numSteps = numel(P);
+        r = profileEdit.selRow;
+        if isempty(r)
+            pos = (direction == PROFILE_INSERT_AFTER) * numSteps + 1;   % Anfang bzw. Ende
+        elseif direction == PROFILE_INSERT_AFTER
+            pos = r + 1;
         else
-            neighbours = [r - 1, r];
             pos = r;
         end
-        neighbours = neighbours(neighbours >= 1 & neighbours <= numSteps);
-        newRow = round(mean(P(neighbours, :), 1) / PROFILE_DRAG_STEP_K) * PROFILE_DRAG_STEP_K;
-        profileEdit.P = [P(1:pos - 1, :); newRow; P(pos:end, :)];
+        type = STEP_TYPES{get(profileEdit.newType, 'Value')};
+        st = newStep(type, profileEdit.n);
+        if strcmp(type, STEP_REPEAT)
+            st.from = max(1, pos - 1);
+        end
+        oldPos = 1:numSteps;
+        P = remapRepeats(P, oldPos + (oldPos >= pos));
+        if isempty(P)
+            P = st;
+        else
+            P = [P(1:pos - 1), st, P(pos:end)];
+        end
+        profileEdit.P = P;
         profileEdit.selRow = pos;                        % neuer Schritt ist markiert -> direkt anpassen
         profileRefresh(true);
         profileStatus(sprintf('Schritt %d eingefügt - mit "Übernehmen" für die Automatik setzen', pos), false);
@@ -2064,43 +2670,43 @@ function MM_GUI()
     function profileMoveStep(direction)
         r = profileEdit.selRow;
         if isempty(r)
-            profileStatus('zuerst einen Schritt markieren (Tabelle oder Punkt im Diagramm)', true);
+            profileStatus('zuerst einen Schritt in der Tabelle markieren', true);
             return;
         end
         target = r + direction;
-        if target < 1 || target > size(profileEdit.P, 1)
+        if target < 1 || target > numel(profileEdit.P)
             return;                                      % schon am Anfang / Ende
         end
-        profileEdit.P([r, target], :) = profileEdit.P([target, r], :);
+        newPos = 1:numel(profileEdit.P);
+        newPos([r, target]) = [target, r];
+        P = remapRepeats(profileEdit.P, newPos);
+        P([r, target]) = P([target, r]);
+        profileEdit.P = P;
         profileEdit.selRow = target;                     % Markierung wandert mit
         profileRefresh(true);
-        profileStatus(sprintf('Schritt %d -> %d verschoben - mit "Übernehmen" für die Automatik setzen', r, target), false);
+        profileStatus(sprintf('Schritt %d -> %d verschoben - "ab Schritt" der Wiederholungen bitte prüfen', r, target), false);
     end
 
     function profileRemoveStep()
         P = profileEdit.P;
-        if size(P, 1) <= 1
-            profileStatus('mindestens ein Schritt wird gebraucht', true);
+        if isempty(P)
             return;
         end
-        r = size(P, 1);
-        if ~isempty(profileEdit.selRow) && profileEdit.selRow <= size(P, 1)
+        r = numel(P);
+        if ~isempty(profileEdit.selRow) && profileEdit.selRow <= numel(P)
             r = profileEdit.selRow;
         end
-        P(r, :) = [];
+        oldPos = 1:numel(P);
+        P = remapRepeats(P, max(1, oldPos - (oldPos > r)));
+        P(r) = [];
         profileEdit.P = P;
         profileEdit.selRow = [];
         profileRefresh(true);
         profileStatus(sprintf('Schritt %d gelöscht - mit "Übernehmen" für die Automatik setzen', r), false);
     end
 
-    function profileCopyFirst()
-        profileEdit.P = repmat(profileEdit.P(:, 1), 1, size(profileEdit.P, 2));
-        profileRefresh(true);
-    end
-
     function ok = profileTextApply()
-        [P, msg] = parseProfileText(get(profileEdit.text, 'String'), size(profileEdit.P, 2));
+        [P, msg] = parseProgramText(get(profileEdit.text, 'String'), profileEdit.nBm, profileEdit.n);
         ok = isempty(msg);
         if ~ok
             profileStatus(msg, true);
@@ -2112,7 +2718,7 @@ function MM_GUI()
     end
 
     function profileLoad()
-        [file, folder] = uigetfile({'*.txt', 'Temperaturprofil (*.txt)'}, 'Temperaturprofil laden', [PROFILE_FOLDER filesep]);
+        [file, folder] = uigetfile({'*.txt', 'Schrittliste / Temperaturprofil (*.txt)'}, 'Schrittliste laden', [PROFILE_FOLDER filesep]);
         if isequal(file, 0)
             return;
         end
@@ -2126,7 +2732,7 @@ function MM_GUI()
         if ~profileTextApply()
             return;
         end
-        [file, folder] = uiputfile({'*.txt', 'Temperaturprofil (*.txt)'}, 'Temperaturprofil speichern', ...
+        [file, folder] = uiputfile({'*.txt', 'Schrittliste (*.txt)'}, 'Schrittliste speichern', ...
                                    fullfile(PROFILE_FOLDER, AUTO_PROFILE_FILE));
         if isequal(file, 0)
             return;
@@ -2136,8 +2742,8 @@ function MM_GUI()
             profileStatus('Datei nicht schreibbar', true);
             return;
         end
-        fprintf(fid, '# Temperaturprofil (eine Zeile je Zelle, Werte in °C je Schritt)\n');
-        lines = profileToText(profileEdit.P);
+        fprintf(fid, '# Schrittliste der Automatik (ein Schritt je Zeile)\n');
+        lines = programToText(profileEdit.P);
         fprintf(fid, '%s\n', lines{:});
         fclose(fid);
         profileStatus(sprintf('gespeichert: %s', file), false);
@@ -2145,27 +2751,157 @@ function MM_GUI()
 
     function profileApply()
         if autoRunning()
-            profileStatus('Automatik läuft - das Profil kann erst danach geändert werden', true);
+            profileStatus('Automatik läuft - die Schrittliste kann erst danach geändert werden', true);
             return;
         end
         % Text geaendert, aber nicht uebernommen? Dann gilt der Text.
         current = strjoin(reshape(cellstr(get(profileEdit.text, 'String')), 1, []), newline);
-        if ~strcmp(strtrim(current), strjoin(profileToText(profileEdit.P), newline)) && ~profileTextApply()
+        if ~strcmp(strtrim(current), strjoin(programToText(profileEdit.P), newline)) && ~profileTextApply()
             return;
         end
-        if size(profileEdit.P, 2) ~= autoCellCount()
+        if profileEdit.n ~= autoCellCount() || profileEdit.nBm ~= numel(cfg.bmAddr)
             profileStatus('Zahl der Zellen hat sich geändert - Editor schließen und neu öffnen', true);
             return;
         end
-        msg = checkProfile(profileEdit.P);
+        msg = checkProgram(profileEdit.P, profileEdit.nBm, profileEdit.n);
         if ~isempty(msg)
             profileStatus(msg, true);
             return;
         end
-        autoProfile = profileEdit.P;
+        autoProgram = profileEdit.P;
         updateAutoSummary();
-        profileStatus(sprintf('übernommen: %d Schritt(e)', size(autoProfile, 1)), false);
-        logMsg(sprintf('Temperaturprofil übernommen: %d Schritt(e)', size(autoProfile, 1)));
+        profileStatus(sprintf('übernommen: %d Schritt(e)', numel(autoProgram)), false);
+        logMsg(sprintf('Schrittliste übernommen: %d Schritt(e)', numel(autoProgram)));
+    end
+
+    %% =========================================================================
+    %  Intervallmessung (nur Manuell): EIS-Messung in festen Zeitabstaenden
+    %  =========================================================================
+    % Das Intervall zaehlt von Start zu Start. Dauert eine Messung laenger als das Intervall,
+    % beginnt die naechste direkt danach. Anzahl 0 = bis "Abbrechen". Alle Messungen einer
+    % Reihe landen in einem Ordner <Zielordner>/<Dateiname>_Intervall_<Zeitstempel>.
+    function startInterval(job)
+        minutesI = str2double(strrep(get(hIntMin, 'String'), ',', '.'));
+        count    = str2double(get(hIntCount, 'String'));
+        if ~(minutesI > 0)
+            logMsg('Intervallmessung: Intervall muss > 0 min sein');
+            return;
+        end
+        if ~(count >= INTERVAL_COUNT_ENDLESS && count == round(count))
+            logMsg('Intervallmessung: Anzahl muss eine ganze Zahl >= 0 sein (0 = bis Abbrechen)');
+            return;
+        end
+        folder = fullfile(job.info.folder, sprintf('%s_Intervall_%s', job.info.baseName, ...
+                          char(datetime('now', 'Format', 'yyyy-MM-dd_HHmmss'))));
+        [created, mkMsg] = mkdir(folder);
+        if ~created
+            logMsg(['Intervallmessung: Ordner nicht anlegbar: ' mkMsg]);
+            return;
+        end
+        intervalRun = struct('active', true, 'measuring', false, 'intervalS', minutesI * SECONDS_PER_MINUTE, ...
+                             'count', count, 'done', 0, 'failed', 0, 'lastStart', NaT, 'nextAt', NaT, ...
+                             'job', job, 'folder', folder);
+        set(intervalLockHandles, 'Enable', 'off');
+        logMsg(sprintf('Intervallmessung gestartet: %s alle %g min, %s, Ordner %s', autoTargetText(job.target), ...
+                       minutesI, intervalCountText(), folder));
+        intervalMeasure();
+        if ~isRunning(intervalTimer)
+            start(intervalTimer);
+        end
+    end
+
+    function s = intervalCountText()
+        if intervalRun.count == INTERVAL_COUNT_ENDLESS
+            s = 'bis Abbrechen';
+        else
+            s = sprintf('%d Messungen', intervalRun.count);
+        end
+    end
+
+    function intervalMeasure()
+        i = intervalRun.done + 1;
+        info = intervalRun.job.info;
+        info.folder    = intervalRun.folder;
+        info.baseName  = sprintf('%s_N%03d', intervalRun.job.info.baseName, i);
+        info.comment   = strtrim(sprintf('%s [Intervallmessung %d, alle %g min]', intervalRun.job.info.comment, i, ...
+                                         intervalRun.intervalS / SECONDS_PER_MINUTE));
+        info.cellNames = cellNames;
+        beginJob(info);
+        intervalRun.measuring = true;
+        intervalRun.lastStart = datetime('now');
+        updateEisButtons(true);
+        sendEis(intervalRun.job.target, intervalRun.job);
+    end
+
+    % Messung der Reihe beendet (EISDONE) oder vom MM abgelehnt (ERR;EIS)
+    function intervalOnDone(ok)
+        if ~intervalRun.active || ~intervalRun.measuring
+            return;
+        end
+        intervalRun.measuring = false;
+        intervalRun.done = intervalRun.done + 1;
+        if ~ok
+            intervalRun.failed = intervalRun.failed + 1;
+        end
+        if intervalRun.count ~= INTERVAL_COUNT_ENDLESS && intervalRun.done >= intervalRun.count
+            intervalFinish(sprintf('Intervallmessung beendet: %d Messung(en), davon %d fehlgeschlagen', ...
+                                   intervalRun.done, intervalRun.failed));
+            return;
+        end
+        intervalRun.nextAt = max(intervalRun.lastStart + seconds(intervalRun.intervalS), datetime('now'));
+        intervalTick();
+    end
+
+    function intervalTick()
+        if ~isvalid(fig) || ~intervalRun.active || intervalRun.measuring
+            return;
+        end
+        nowT = datetime('now');
+        if nowT >= intervalRun.nextAt && ~mmBusy
+            intervalMeasure();
+            return;
+        end
+        total = '';
+        if intervalRun.count ~= INTERVAL_COUNT_ENDLESS
+            total = sprintf(' von %d', intervalRun.count);
+        end
+        set(hProgress, 'String', sprintf('Intervallmessung: %d%s fertig, nächste Messung in %s', ...
+            intervalRun.done, total, minSec(seconds(intervalRun.nextAt - nowT))));
+    end
+
+    function intervalFinish(msg)
+        if ~intervalRun.active
+            return;
+        end
+        intervalRun.active = false;
+        intervalRun.measuring = false;
+        if ~isempty(intervalTimer) && isvalid(intervalTimer)
+            stop(intervalTimer);
+        end
+        set(intervalLockHandles, 'Enable', 'on');
+        set(hCellRail, 'Enable', onOff(~isAutoMode()));
+        updateEisButtons(mmBusy);
+        set(hProgress, 'String', msg);
+        logMsg(msg);
+    end
+
+    % Knopf "Abbrechen" im EIS-Panel: laufende Messung abbrechen, eine Intervallreihe beenden
+    function n = intervalDoneCount()
+        n = 0;
+        if isfield(intervalRun, 'done')
+            n = intervalRun.done;
+        end
+    end
+
+    function onEisAbortPressed()
+        if intervalRun.active
+            if intervalRun.measuring
+                sendCommand('ABORT');
+            end
+            intervalFinish(sprintf('Intervallmessung abgebrochen nach %d Messung(en)', intervalRun.done));
+        else
+            sendCommand('ABORT');
+        end
     end
 
     %% =========================================================================
@@ -2176,6 +2912,17 @@ function MM_GUI()
             s = 'Stack';
         else
             s = cellLabel(str2double(t(2:end)));
+        end
+    end
+
+    % wie targetText, Einzelzelle im Testmodus Stackkonfiguration mit Zusatz
+    function s = measLabel(t)
+        s = targetText(t);
+        if isKey(meas, t)
+            entry = meas(t);                         % Map: nur eine Indexebene moeglich
+            if isfield(entry, 'onRail') && entry.onRail
+                s = sprintf('%s (%s)', s, CELL_RAIL_LABEL);
+            end
         end
     end
 

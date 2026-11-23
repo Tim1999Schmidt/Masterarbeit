@@ -16,7 +16,9 @@
  *   m                       measurements: u (mV), i (mA), t (degC), vdda (mV),
  *                           cal (raw counts on the temperature references)
  *   conz [0|1]              show / set CONNECT_Z (not during a sweep); switched off
- *                           by the BM itself at a cell current >= 2 A (ERR 9, "clear")
+ *                           by the BM itself at |cell current| >= imax (ERR 9, "clear")
+ *   imax [mA]               show / set the rail current limit 100..2500 mA (both
+ *                           directions, RAM only, 2000 after reset)
  *   eis c f1 f2 a w n [t]   start sweep: chip (0 cell, 1 stack), start and stop
  *                           frequency index (0 = 7812.5 Hz .. 51 = 1.09 Hz),
  *                           amplitude 0..5 (50..500 mA), waveform (0 sine,

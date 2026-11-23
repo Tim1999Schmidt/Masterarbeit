@@ -1,0 +1,11 @@
+# Schrittliste der Automatik (ein Schritt je Zeile)
+# Beispiel: Temperaturen setzen, warten, messen, Messreihe mit Wiederholung
+1. Temperatur: Zelle 1 = 25, Zelle 2 = 35
+2. Warten: 5 min
+3. EIS: alle Zellen
+4. Temperatur: alle = 25
+5. Warten: 2 min
+6. EIS: Zelle 1
+7. Warten: 3 min
+8. Wiederholen: ab Schritt 6, insgesamt 13-mal
+9. EIS: Zelle 2

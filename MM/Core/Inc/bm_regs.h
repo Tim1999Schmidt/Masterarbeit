@@ -34,7 +34,8 @@
 #define BM_REG_RES_FREQ      0x19u   /* RO uint32 0.01 Hz */
 #define BM_REG_RES_RE        0x1Du   /* RO int32  uOhm */
 #define BM_REG_RES_IM        0x21u   /* RO int32  uOhm */
-#define BM_REG_MAP_SIZE      0x25u
+#define BM_REG_RAIL_I_MAX    0x25u   /* RW uint16 rail current limit mA (both directions, RAM only) */
+#define BM_REG_MAP_SIZE      0x27u
 
 /* telemetry block read in one go: STATUS .. CAL_HIGH */
 #define BM_TELEMETRY_FIRST   BM_REG_STATUS
@@ -68,12 +69,12 @@
 #define BM_ERR_CONFIG        1u
 #define BM_ERR_BUSY          2u
 #define BM_ERR_EIS_COMM      3u
-#define BM_ERR_CONNECT_STATE 4u
+#define BM_ERR_CONNECT_STATE 4u   /* no longer raised by the BM */
 #define BM_ERR_TEMP_SENSOR   5u
 #define BM_ERR_ERRQ          6u
 #define BM_ERR_FLASH         7u
 #define BM_ERR_EIS_ADC_SAT   8u   /* TLE9010 ADC saturated, sweep stopped */
-#define BM_ERR_OVERCURRENT   9u   /* cell current >= 2 A with CONNECT_Z on: BM switched CONNECT_Z off */
+#define BM_ERR_OVERCURRENT   9u   /* |cell current| >= RAIL_I_MAX with CONNECT_Z on: BM switched CONNECT_Z off */
 
 /* ---- value ranges ---- */
 #define BM_CONNECT_Z_OFF     0u
@@ -91,5 +92,8 @@
 #define BM_MEAS_TIME_DEFAULT 1u       /* 50 ms */
 #define BM_PROGRESS_IDLE     0xFFu
 #define BM_NUM_EIS_WITH_STACK 2u
+#define BM_RAIL_I_MAX_DEFAULT_MA 2000u   /* RAIL_I_MAX after a reset of the BM */
+#define BM_RAIL_I_MAX_MIN_MA      100u
+#define BM_RAIL_I_MAX_MAX_MA     2500u   /* below the measuring range of the BM (~ +-2.75 A) */
 
 #endif /* BM_REGS_H */

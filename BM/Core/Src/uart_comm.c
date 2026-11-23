@@ -251,6 +251,16 @@ static void ProcessLine(char *cmd)
             Put("\r\n");
         }
     }
+    else if (strcmp(cmd, "imax") == 0)
+    {
+        if (n == 1 && !App_SetRailCurrentLimit(a[0]))
+        {
+            Put("ERR imax 100..2500 mA\r\n");
+            return;
+        }
+        PutKV("OK imax=", App_GetRailCurrentLimit());
+        Put("\r\n");
+    }
     else if (strcmp(cmd, "eis") == 0)
     {
         Eis_Config_t e;
@@ -390,7 +400,7 @@ static void ProcessLine(char *cmd)
     }
     else
     {
-        Put("ERR ? s m conz eis abort res addr neis izero ucal recal clear rd log\r\n");
+        Put("ERR ? s m conz imax eis abort res addr neis izero ucal recal clear rd log\r\n");
     }
 }
 

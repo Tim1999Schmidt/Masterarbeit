@@ -24,7 +24,23 @@ extern TIM_HandleTypeDef htim3; /* PWM_CTRL / TIM3_CH1, initialised by MX_TIM3_I
 
 /* PWM resolution is taken from the timer itself (ARR + 1 counts per period, set
  * by the TIM3 Counter Period in PM.ioc), so it stays correct if the PWM frequency
- * is changed there. 100 % duty = CCR = ARR + 1 (PWM mode 1, up-counting). */
+ * is changed there. 100 % duty = CCR = ARR + 1 (PWM mode 1, up-counting).
+ *
+ * Duty-cycle dithering: at 48 MHz timer clock and 480 kHz PWM the timer has only
+ * 100 counts per period (1 % steps = ~55 mA Peltier current at 16 % / 0.9 A).
+ * The current loop then toggles between two neighbouring steps every
+ * CURRENT_CYCLE_MS, and these current steps disturb the EIS measurement of the
+ * BMs in the 10..500 Hz range. A DMA channel therefore writes a pattern of
+ * PWM_DITHER_STEPS compare values into TIM3_CCR1, one per PWM period (TIM3
+ * update event): e.g. 12 x 16 % + 4 x 17 % = 16.25 % on average. The resolution
+ * is PWM_DITHER_STEPS times finer; the pattern repeats at f_PWM / PWM_DITHER_STEPS
+ * (480 kHz / 16 = 30 kHz), far above the EIS range (<= 7.8 kHz). The PWM
+ * frequency itself is unchanged. The CPU only rewrites the pattern buffer. */
+#define PWM_DITHER_STEPS               16u    /* PWM periods per dither pattern (power of two: divisions are shifts) */
+#define PWM_DMA_CHANNEL        DMA1_Channel1  /* free channel: no other DMA user in this project */
+#define PWM_DMAMUX_CHANNEL  DMAMUX1_Channel0  /* DMAMUX channel n-1 feeds DMA1 channel n */
+#define PWM_DMA_REQUEST    DMA_REQUEST_TIM3_UP /* DMAMUX request: TIM3 update event = start of each PWM period */
+typedef char pwm_dither_steps_power_of_two[((PWM_DITHER_STEPS & (PWM_DITHER_STEPS - 1u)) == 0u) ? 1 : -1];
 
 #define DUTY_CYCLE_START                0.2f  /* initial test duty cycle for the startup short-circuit check */
 #define CURRENT_LIMIT_START_A           3.0f  /* fixed startup short-circuit threshold, independent of the user-settable run-time limit */
@@ -54,6 +70,12 @@ extern TIM_HandleTypeDef htim3; /* PWM_CTRL / TIM3_CH1, initialised by MX_TIM3_I
  * (0 < gain < 2 is stable; 0.3 settles a step within ~10 cycles = 100 ms
  * without overshoot) */
 #define CURRENT_LOOP_GAIN               0.3f
+/* Current loop dead band: current errors below this are not corrected, so the
+ * noise of the current measurement (~2 mA per ADC count, current_sensor.c) does
+ * not move the duty cycle every CURRENT_CYCLE_MS (each change is a current step
+ * that disturbs the EIS measurement). The remaining current error is corrected
+ * by the temperature PID through the current request. */
+#define CURRENT_DEADBAND_A              0.006f
 
 /* Duty-cycle ceiling while running: the startup check finds the duty cycle
  * that drives currentLimit at the temperature difference of that moment.
@@ -110,6 +132,17 @@ extern TIM_HandleTypeDef htim3; /* PWM_CTRL / TIM3_CH1, initialised by MX_TIM3_I
  * rounded table for 10 Hz with typos, e.g. 0.99 instead of 0.909 for the oldest slot.) */
 #define ERR_HISTORY_LEN              11u              /* number of difference quotients */
 #define ERR_FILT_CO                  (1.0f / (float)ERR_HISTORY_LEN)   /* averaging over the 11 estimates */
+
+/* Low-pass of the D term (first order, time constant PID_D_FILTER_TAU_S). The
+ * difference quotients over 0.1..1.1 s amplify the noise of the temperature
+ * reading: with kd = 5 a noise of ~0.07 K per reading gave ~0.16 A current change
+ * from one PID cycle to the next (jumps up to ~0.6 A), and every such step of the
+ * Peltier current disturbs the EIS measurement. 3 s is short against the ~15 s
+ * lag and ~450 s time constant of the plant: simulated with the default gains the
+ * cycle-to-cycle change drops ~10x (0.16 -> 0.015 A), the overshoot of a
+ * 25 -> 45 degC step stays the same (< 0.02 K). */
+#define PID_D_FILTER_TAU_S           3.0f
+#define PID_D_FILTER_COEF            ((1.0f / PID_FREQ_HZ) / (PID_D_FILTER_TAU_S + 1.0f / PID_FREQ_HZ))
 static float dWeight[ERR_HISTORY_LEN];
 
 /* ---- PID state ----------------------------------------------------------- */
@@ -145,6 +178,8 @@ static uint8_t directionFlipCounter = 0;
 static uint8_t directionFlipThreshold = 1; /* recomputed in Init */
 static float currentLimit = PID_I_LIMIT_DEFAULT_A;  /* symmetric magnitude, I2C-settable */
 static float dutyCycle = 0.0f;
+static volatile uint16_t ditherCcr[PWM_DITHER_STEPS];   /* compare values, one per PWM period (read by DMA) */
+static uint32_t outputFineCounts = 0u;  /* duty cycle in effect in 1/PWM_DITHER_STEPS timer counts */
 static float dutyCycleLimit = DUTY_CYCLE_MAX;
 static float dutyPerAmp = 0.0f;       /* duty cycle per ampere, measured by the startup check */
 static float currentMaxDC = 0.0f;
@@ -174,22 +209,39 @@ static void BusyWaitMs(uint32_t ms)
  * timer runs from MX_TIM3_Init() on and is never stopped: duty cycle 0 means
  * PA6 permanently high = output stage off. Switching off = PwmOff(), never
  * HAL_TIM_PWM_Stop() (a stopped channel would no longer drive PA6 high). */
+/* Fills the dither pattern for fineCounts (timer counts x PWM_DITHER_STEPS): the
+ * remainder is spread evenly over the pattern (each entry base or base + 1).
+ * Takes effect within one pattern (33 us); a pattern being read while it is
+ * rewritten only mixes old and new values for that one pattern. */
+static void PwmWriteFine(uint32_t fineCounts)
+{
+    const uint32_t base  = fineCounts / PWM_DITHER_STEPS;
+    const uint32_t extra = fineCounts % PWM_DITHER_STEPS;
+    uint32_t i;
+    for (i = 0u; i < PWM_DITHER_STEPS; i++)
+        ditherCcr[i] = (uint16_t)(base + ((i + 1u) * extra) / PWM_DITHER_STEPS - (i * extra) / PWM_DITHER_STEPS);
+}
+
 static void PwmOff(void)
 {
     dutyCycle = 0.0f;
-    htim3.Instance->CCR1 = 0u;
+    outputFineCounts = 0u;
+    PwmWriteFine(0u);
 }
 
 /* Output stage off without losing dutyCycle (calibration pause, manual mode) */
 static void PwmPause(void)
 {
-    htim3.Instance->CCR1 = 0u;
+    PwmWriteFine(0u);
 }
 
 static void SetPwmDutyCycle(float dc)
 {
     if (dc <= dutyCycleLimit && dc >= 0.0f && dc <= DUTY_CYCLE_MAX)   /* never above DUTY_CYCLE_MAX */
-        htim3.Instance->CCR1 = (uint32_t)(dc * (float)(htim3.Instance->ARR + 1u) + 0.5f);
+    {
+        outputFineCounts = (uint32_t)(dc * (float)((htim3.Instance->ARR + 1u) * PWM_DITHER_STEPS) + 0.5f);
+        PwmWriteFine(outputFineCounts);
+    }
 }
 
 /* Relay K1 (bistable, PM_V2.1): the RESET position is the rest position and
@@ -491,7 +543,9 @@ static void DriverStep(void)
             }
             else
             {
-                dutyCycle += CURRENT_LOOP_GAIN * dutyPerAmp * (currentSet - measuredCurrent);
+                const float currentError = currentSet - measuredCurrent;
+                if (currentError > CURRENT_DEADBAND_A || currentError < -CURRENT_DEADBAND_A)
+                    dutyCycle += CURRENT_LOOP_GAIN * dutyPerAmp * currentError;
                 if (dutyCycle < 0.0f) dutyCycle = 0.0f;
                 if (dutyCycle > dutyCycleLimit) dutyCycle = dutyCycleLimit;
             }
@@ -652,7 +706,7 @@ static void PidStep(void)
         }
 
         P_val = kp * err;
-        D_val = kd * WeightedDerivative();
+        D_val += PID_D_FILTER_COEF * (kd * WeightedDerivative() - D_val);   /* filtered, see PID_D_FILTER_TAU_S */
         {
             /* Anti-windup (conditional integration): while the output is
              * already beyond the current limit, the integrator is frozen
@@ -717,22 +771,35 @@ static void PidStep(void)
 /* ---- Public API --------------------------------------------------------------- */
 void PidControl_PwmOutputInit(void)
 {
-    htim3.Instance->CCR1 = 0u;                       /* 0 % */
+    PwmWriteFine(0u);                                /* 0 % */
+    htim3.Instance->CCR1 = 0u;
     htim3.Instance->CCER |= TIM_CCER_CC1P;           /* inverted output, see PwmOff() */
+
+    /* dithering (see PWM_DITHER_STEPS): DMA copies ditherCcr into CCR1 on every
+     * TIM3 update event, circular, half-word transfers, no interrupt. Set up
+     * directly in the registers (the HAL DMA driver would cost flash). */
+    __HAL_RCC_DMA1_CLK_ENABLE();
+    PWM_DMAMUX_CHANNEL->CCR = PWM_DMA_REQUEST;
+    PWM_DMA_CHANNEL->CPAR  = (uint32_t)&htim3.Instance->CCR1;
+    PWM_DMA_CHANNEL->CMAR  = (uint32_t)ditherCcr;
+    PWM_DMA_CHANNEL->CNDTR = PWM_DITHER_STEPS;
+    PWM_DMA_CHANNEL->CCR   = DMA_CCR_DIR | DMA_CCR_CIRC | DMA_CCR_MINC |
+                             DMA_CCR_PSIZE_0 | DMA_CCR_MSIZE_0 | DMA_CCR_EN;   /* memory -> CCR1, 16 bit */
+    htim3.Instance->DIER |= TIM_DIER_UDE;            /* DMA request on each update event */
+
     (void)HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);  /* PA6 now driven high = output stage off */
 }
 
-static uint32_t pausedCcr = 0u;   /* compare value saved by PidControl_OutputPause() */
-
+/* Output stage off for the temperature front-end calibration; the duty cycle
+ * in effect (outputFineCounts) is kept and restored by PidControl_OutputResume() */
 void PidControl_OutputPause(void)
 {
-    pausedCcr = htim3.Instance->CCR1;
-    htim3.Instance->CCR1 = 0u;                       /* output stage off, see PwmOff() */
+    PwmWriteFine(0u);                                /* output stage off, see PwmOff() */
 }
 
 void PidControl_OutputResume(void)
 {
-    htim3.Instance->CCR1 = pausedCcr;
+    PwmWriteFine(outputFineCounts);
 }
 
 void PidControl_Init(void)

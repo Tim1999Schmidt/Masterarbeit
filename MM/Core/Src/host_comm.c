@@ -41,19 +41,22 @@ extern UART_HandleTypeDef huart2;   /* initialised by MX_USART2_UART_Init() in m
 
 /* number of ';'-separated fields of the commands with a fixed format
  * (command name included) and how many of them are numbers */
-#define VALUE_CMD_FIELDS      3u      /* PMSET;<pm>;<v>  PMILIM;<pm>;<v>  PMSRC;<pm>;<src> */
+#define VALUE_CMD_FIELDS      3u      /* PMSET;<pm>;<v>  PMILIM;<pm>;<v>  PMSRC;<pm>;<src>  BMIMAX;<bm>;<v> */
 #define PMSRC_NUMBERS         2u      /* <pm>;<src> */
 #define PMGAIN_FIELDS         5u      /* PMGAIN;<pm>;<kp>;<ki>;<kd> */
 #define PMGAIN_NUMBERS        3u
 #define EIS_CMD_FIELDS_MIN    7u      /* EIS;<target>;<fstart>;<fstop>;<amp>;<wave>;<avg> */
 #define EIS_CMD_FIELDS_TIME   8u      /* ...;<time> (optional, default BM_MEAS_TIME_DEFAULT) */
-#define EIS_CMD_FIELDS_MAX    9u      /* ...;<time>;<stack> (optional, default EIS_STACK_ALL) */
+#define EIS_CMD_FIELDS_STACK  9u      /* ...;<time>;<stack> (optional, default EIS_STACK_ALL) */
+#define EIS_CMD_FIELDS_MAX   10u      /* ...;<stack>;<cellmode> (optional, default EIS_CELL_ALONE) */
 #define EIS_CMD_NUMBERS_MAX   (EIS_CMD_FIELDS_MAX - SECOND_ARG)
 #define EIS_NUM_MEAS_TIME     5u      /* index of <time> among the numbers */
 #define EIS_NUM_STACK_MASK    6u      /* index of <stack> among the numbers */
+#define EIS_NUM_CELL_MODE     7u      /* index of <cellmode> among the numbers */
 #define FIRST_ARG             1u      /* field index of the first argument */
 #define SECOND_ARG            2u
 #define CELL_TARGET_PREFIX    'C'
+#define RAIL_CMD_FIELDS_MAX   3u      /* RAIL;<0|1>;<mask> */
 
 typedef char rx_size_power_of_two[((RX_BUF_SIZE & (RX_BUF_SIZE - 1u)) == 0u) ? 1 : -1];
 typedef char tx_size_power_of_two[((TX_BUF_SIZE & (TX_BUF_SIZE - 1u)) == 0u) ? 1 : -1];
@@ -262,9 +265,10 @@ static void CmdStat(const char *cmd)
     for (i = 0u; i < c->numBm; i++)
     {
         const BmData_t *b = Boards_GetBm(i);
-        (void)HostComm_SendLine("BM;%u;0x%02X;%u;%u;%u;%u;%d;%d;%u;%u;%u",
+        (void)HostComm_SendLine("BM;%u;0x%02X;%u;%u;%u;%u;%d;%d;%u;%u;%u;%u",
                                 (unsigned)(i + 1u), c->bmAddr[i], b->online, b->status, b->errorCode,
-                                b->uCellMv, b->iCellMa, b->tTabCenti, b->numEis, b->progress, b->connectZ);
+                                b->uCellMv, b->iCellMa, b->tTabCenti, b->numEis, b->progress, b->connectZ,
+                                b->railIMaxMa);
     }
     for (i = 0u; i < c->numPm; i++)
     {
@@ -274,8 +278,9 @@ static void CmdStat(const char *cmd)
                                 p->tSetCenti, p->tActualCenti, p->tPt1000Centi, p->iActualMa,
                                 p->dutyMilli, p->iLimitMa, c->pmSource[i]);
     }
-    (void)HostComm_SendLine("MM;%u;%lu;%u;%u;%u", EisSeq_IsBusy(), (unsigned long)I2cBus_GetErrorCount(),
-                            Boards_UnassignedBmPresent(), Boards_UnassignedPmPresent(), EisSeq_GetRailAuto());
+    (void)HostComm_SendLine("MM;%u;%lu;%u;%u;%u;%u", EisSeq_IsBusy(), (unsigned long)I2cBus_GetErrorCount(),
+                            Boards_UnassignedBmPresent(), Boards_UnassignedPmPresent(), EisSeq_GetRailAuto(),
+                            EisSeq_GetRailMask());
     Ok(cmd);
 }
 
@@ -364,6 +369,22 @@ static void CmdBm(const char *cmd, char **f, uint8_t n)
     if (ok) Ok(cmd); else Err(cmd, "I2C");
 }
 
+/* BMIMAX;<bm>;<mA>: rail current limit (both directions), allowed at any time,
+ * also during an EIS job (e.g. while a cell is charged through the rail) */
+static void CmdBmRailLimit(const char *cmd, char **f, uint8_t n)
+{
+    uint8_t first, last, i, ok = 1u;
+    int32_t v;
+
+    if (!BoardRange(f, n, MmConfig_Get()->numBm, &first, &last)) { Err(cmd, "BOARD"); return; }
+    if (n != VALUE_CMD_FIELDS || !ParseInt(f[SECOND_ARG], &v) ||
+        v < (int32_t)BM_RAIL_I_MAX_MIN_MA || v > (int32_t)BM_RAIL_I_MAX_MAX_MA)
+        { Err(cmd, "PARAM"); return; }
+    for (i = first; i <= last; i++)
+        ok &= Boards_BmSetRailCurrentLimit(i, (uint16_t)v);
+    if (ok) Ok(cmd); else Err(cmd, "I2C");
+}
+
 static void CmdEis(const char *cmd, char **f, uint8_t n)
 {
     EisJob_t job;
@@ -397,7 +418,8 @@ static void CmdEis(const char *cmd, char **f, uint8_t n)
     job.waveform  = (uint8_t)v[3];
     job.averages  = (uint8_t)v[4];
     job.measTime  = (n >= EIS_CMD_FIELDS_TIME) ? (uint8_t)v[EIS_NUM_MEAS_TIME] : BM_MEAS_TIME_DEFAULT;
-    job.stackMask = (n >= EIS_CMD_FIELDS_MAX) ? (uint8_t)v[EIS_NUM_STACK_MASK] : EIS_STACK_ALL;
+    job.stackMask = (n >= EIS_CMD_FIELDS_STACK) ? (uint8_t)v[EIS_NUM_STACK_MASK] : EIS_STACK_ALL;
+    job.cellMode  = (n >= EIS_CMD_FIELDS_MAX) ? (uint8_t)v[EIS_NUM_CELL_MODE] : EIS_CELL_ALONE;
 
     switch (EisSeq_Start(&job))
     {
@@ -433,16 +455,22 @@ static void ProcessLine(char *s)
     else if (cmd[0] == 'P' && cmd[1] == 'M') CmdPm(cmd, f, n);    /* PMSTART, PMSET, ... */
     else if (strcmp(cmd, "BMCLR") == 0 || strcmp(cmd, "BMRECAL") == 0 || strcmp(cmd, "BMIZERO") == 0)
         CmdBm(cmd, f, n);
+    else if (strcmp(cmd, "BMIMAX") == 0)     CmdBmRailLimit(cmd, f, n);
     else if (strcmp(cmd, "EIS") == 0)        CmdEis(cmd, f, n);
     else if (strcmp(cmd, "RAIL") == 0)
     {
-        int32_t on;
+        int32_t on, mask = 0;
+        if (n > RAIL_CMD_FIELDS_MAX) { Err(cmd, "PARAM"); return; }
         if (n > FIRST_ARG)
         {
             if (!ParseInt(f[FIRST_ARG], &on) || (on != 0 && on != 1)) { Err(cmd, "PARAM"); return; }
+            if (n > SECOND_ARG && (!ParseInt(f[SECOND_ARG], &mask) || mask < 0 || mask > (int32_t)UINT8_MAX))
+                { Err(cmd, "PARAM"); return; }
+            if (n > SECOND_ARG)
+                EisSeq_SetRailMask((uint8_t)mask);
             EisSeq_SetRailAuto((uint8_t)on);
         }
-        (void)HostComm_SendLine("OK;RAIL;%u", EisSeq_GetRailAuto());
+        (void)HostComm_SendLine("OK;RAIL;%u;%u", EisSeq_GetRailAuto(), EisSeq_GetRailMask());
     }
     else if (strcmp(cmd, "ABORT") == 0)
     {

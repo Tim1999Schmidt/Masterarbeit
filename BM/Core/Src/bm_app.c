@@ -12,16 +12,17 @@
 
 static App_Error_t latchedError = APP_ERR_NONE;
 static uint8_t     wasBusy;
+static int32_t     railLimitMa = APP_RAIL_CURRENT_DEFAULT_MA;
 
 void App_Process(void)
 {
     const uint8_t busy = EIS_IsBusy();
 
-    /* rail protection (see APP_RAIL_CURRENT_MAX_MA) */
+    /* rail protection in both current directions (see APP_RAIL_CURRENT_DEFAULT_MA) */
     if (BmIo_GetConnectZ())
     {
         const int32_t i = CellMeas_GetCurrentMa();
-        if (i >= APP_RAIL_CURRENT_MAX_MA || i <= -APP_RAIL_CURRENT_MAX_MA || CellMeas_IsCurrentSaturated())
+        if (i >= railLimitMa || i <= -railLimitMa || CellMeas_IsCurrentSaturated())
         {
             BmIo_SetConnectZ(0u);
             EIS_Abort();                       /* a stack sweep cannot go on without the rail */
@@ -44,15 +45,8 @@ App_Error_t App_StartEis(const Eis_Config_t *cfg)
 {
     Eis_Result_t r;
 
-    /* cell measurement: the cell must be off the rail. A stack measurement
-     * is allowed in both states - the MM decides which cells are on the rail,
-     * the stack TLE9010 is supplied from the rail itself. */
-    if (cfg->chip == EIS_CHIP_CELL && BmIo_GetConnectZ())
-    {
-        latchedError = APP_ERR_CONNECT_STATE;
-        return latchedError;
-    }
-
+    /* cell and stack measurement are allowed with CONNECT_Z = 0 and 1 - the MM
+     * decides which cells are on the rail (see bm_app.h) */
     r = EIS_Start(cfg, BmConfig_Get()->numEis);
     if (r == EIS_ERR_BUSY)
         latchedError = APP_ERR_BUSY;
@@ -93,6 +87,19 @@ void App_ClearError(void)
 void App_SetError(App_Error_t e)
 {
     latchedError = e;
+}
+
+uint8_t App_SetRailCurrentLimit(int32_t ma)
+{
+    if (ma < APP_RAIL_CURRENT_MIN_MA || ma > APP_RAIL_CURRENT_MAX_MA)
+        return 0u;
+    railLimitMa = ma;
+    return 1u;
+}
+
+uint16_t App_GetRailCurrentLimit(void)
+{
+    return (uint16_t)railLimitMa;
 }
 
 App_Error_t App_GetErrorCode(void)

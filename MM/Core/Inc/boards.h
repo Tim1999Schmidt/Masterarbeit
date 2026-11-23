@@ -16,6 +16,11 @@
  * nothing is forwarded, the PM runs into its T_EXT timeout and stops with
  * error 5 (intended: no regulation on a stale temperature).
  *
+ * Rail current limit of a BM (RAIL_I_MAX, RAM only on the BM): the MM keeps a
+ * setpoint per BM (Boards_BmSetRailCurrentLimit, default BM_RAIL_I_MAX_DEFAULT_MA),
+ * reads the register on every poll and writes the setpoint again if the BM
+ * reports another value (e.g. after a reset of the BM).
+ *
  * Boards without an assigned address: on every poll the MM also probes the
  * two unassigned addresses (MM_UNASSIGNED_BM_ADDR / _PM_ADDR, mm_config.h).
  *
@@ -43,6 +48,7 @@ typedef struct
     uint16_t uCellMv;
     int16_t  iCellMa;
     int16_t  tTabCenti;     /* degC x100 */
+    uint16_t railIMaxMa;    /* rail current limit in effect on the BM (read on every poll) */
     uint8_t  failCount;
 } BmData_t;
 
@@ -80,6 +86,10 @@ uint8_t Boards_UnassignedPmPresent(void);
 uint8_t Boards_BmControl(uint8_t index, uint8_t controlBits);           /* BM_CTRL_* */
 uint8_t Boards_BmSetConnectZ(uint8_t index, uint8_t on);
 uint8_t Boards_BmWriteEisParams(uint8_t index, const uint8_t *params);  /* BM_EIS_PARAM_LEN bytes from EIS_CHIP */
+/* New setpoint of the rail current limit (BM_RAIL_I_MAX_MIN_MA..MAX_MA, checked by
+ * the caller), written right away and kept up on every poll. */
+uint8_t Boards_BmSetRailCurrentLimit(uint8_t index, uint16_t limitMa);
+uint16_t Boards_BmGetRailCurrentSetpoint(uint8_t index);
 /* Result of one frequency index of the last completed sweep. */
 uint8_t Boards_BmReadResult(uint8_t index, uint8_t freqIndex, uint8_t *valid,
                             uint32_t *freqCentiHz, int32_t *reUOhm, int32_t *imUOhm);

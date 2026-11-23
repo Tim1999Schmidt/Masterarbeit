@@ -29,15 +29,16 @@
  *                                  stored by the console command "izero" as fallback if
  *                                  that reading is implausible)              (reads back 0)
  *   0x02  ERROR_CODE   RO  uint8   0 none, 1 EIS config, 2 busy, 3 EIS communication,
- *                                  4 CONNECT_Z does not fit (cell measurement needs 0),
+ *                                  4 CONNECT_Z does not fit (no longer raised),
  *                                  5 temperature sensor, 6 TLE9015 ERRQ, 7 flash,
  *                                  8 TLE9010 ADC saturated (sweep stopped),
- *                                  9 overcurrent: cell current >= 2 A with CONNECT_Z on ->
- *                                    CONNECT_Z switched off, = 1 refused until cleared
+ *                                  9 overcurrent: |cell current| >= RAIL_I_MAX (both
+ *                                    directions) with CONNECT_Z on -> CONNECT_Z switched
+ *                                    off, = 1 refused until cleared
  *   0x03  CONNECT_Z    RW  uint8   0 = single cell, 1 = cell on the parallel rail (stack
  *                                  measurement). Only changed while no sweep runs.
- *                                  Switched off by the BM itself at >= 2 A (error 9).
- *                                  The MM must check the cell voltages first!
+ *                                  Switched off by the BM itself at |I| >= RAIL_I_MAX
+ *                                  (error 9). The MM must check the cell voltages first!
  *   0x04  EIS_CHIP     RW  uint8   0 = cell TLE9010, 1 = stack TLE9010 (first BM only)
  *   0x05  F_START      RW  uint8   frequency index 0..51 (0 = 7812.5 Hz, 51 = 1.09 Hz)
  *   0x06  F_STOP       RW  uint8   frequency index F_START..51
@@ -59,8 +60,12 @@
  *   0x19  RES_FREQ     RO  uint32  frequency of RES_INDEX in 0.01 Hz
  *   0x1D  RES_RE       RO  int32   real part in uOhm
  *   0x21  RES_IM       RO  int32   imaginary part in uOhm
+ *   0x25  RAIL_I_MAX   RW  uint16  rail current limit in mA (magnitude, charging and
+ *                                  discharging) 100..2500, RAM only, 2000 after reset;
+ *                                  other values are ignored (the register keeps the limit
+ *                                  in effect). Both bytes in one write.
  *
- * Register map: 0x25 (37) bytes. Reading one result: write [0x17][index] (P),
+ * Register map: 0x27 (39) bytes. Reading one result: write [0x17][index] (P),
  * then [0x18](Sr) and read 13 bytes (RES_VALID .. RES_IM). The result fields
  * are filled at the start of each read, so they always belong to the RES_INDEX
  * written before.

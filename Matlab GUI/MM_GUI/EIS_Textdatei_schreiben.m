@@ -2,24 +2,31 @@ function fullFilePath = EIS_Textdatei_schreiben(m, jobInfo, targetLabel)
 % EIS_Textdatei_schreiben  Schreibt das Ergebnis einer EIS-Messung als Textdatei
 %
 %   m           : Messung (Felder target, cells [BM U_mV T_degC], data [Index f_Hz Re_uOhm Im_uOhm],
-%                 pm (letzte PM-Werte), start)
+%                 pm (letzte PM-Werte), start, onRail = Einzelzelle mit Zellen an der Rail gemessen)
 %   jobInfo     : Einstellungen des Auftrags (folder, baseName, timestamp, comment, cellNames, settings)
 %   targetLabel : Bezeichnung des Messobjekts, z. B. 'Zelle 1 (Zelle_A)' oder 'Stack'
 %
 % Ordner : <Zielordner>/<Dateiname>_<Zeitstempel>/  (ein Ordner je Messauftrag)
-% Datei  : <Dateiname>_<Ziel>.txt  und  <Dateiname>_<Ziel>_Komma.txt (Dezimalkomma)
+% Datei  : <Dateiname>_<Ziel>.txt  und  <Dateiname>_<Ziel>_Komma.txt (Dezimalkomma),
+%          Einzelzelle an der Rail: <Dateiname>_<Ziel>_Rail.txt
 % Aufbau wie bei der Zellhalter-GUI: Kopfzeilen mit '#', dann Spalten
 % freq/Hz, Re(Z)/Ohm, Im(Z)/Ohm.
 
     UOHM_PER_OHM = 1e6;
     CELL_COLUMN_BM = 1;  CELL_COLUMN_U = 2;  CELL_COLUMN_T = 3;
     DATA_COLUMN_F = 2;   DATA_COLUMN_RE = 3; DATA_COLUMN_IM = 4;
+    RAIL_SUFFIX = '_Rail';                           % Einzelzelle mit Stackkonfiguration gemessen
+
+    onRail = isfield(m, 'onRail') && m.onRail;
 
     folder = fullfile(jobInfo.folder, sprintf('%s_%s', jobInfo.baseName, jobInfo.timestamp));
     if ~exist(folder, 'dir')
         mkdir(folder);
     end
     baseName = sprintf('%s_%s', jobInfo.baseName, m.target);
+    if onRail
+        baseName = [baseName RAIL_SUFFIX];
+    end
     fullFilePath = fullfile(folder, [baseName '.txt']);
 
     fid = fopen(fullFilePath, 'w');
@@ -50,6 +57,10 @@ function fullFilePath = EIS_Textdatei_schreiben(m, jobInfo, targetLabel)
     end
     if strcmp(m.target, 'S') && isfield(s, 'stackCells')
         fprintf(fid, '# Stack: an der Rail verbunden (CONNECT_Z = 1): Zelle %s\n', s.stackCells);
+    end
+    if onRail
+        fprintf(fid, '# Einzelzelle mit Stackkonfiguration gemessen (nicht vom Stack getrennt)\n');
+        fprintf(fid, '# an der Rail verbunden (CONNECT_Z = 1): Zelle %s\n', s.stackCells);
     end
     fprintf(fid, '# \n');
     fprintf(fid, '# %-15s %-15s %-12s %-12s %-12s %-12s\n', 'Start_Index:', 'Stopp_Index:', 'Amplitude:', ...

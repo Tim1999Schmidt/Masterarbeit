@@ -57,22 +57,28 @@ typedef struct __attribute__((packed))
     uint32_t resFreq;     /* 0x19 RO 0.01 Hz */
     int32_t  resRe;       /* 0x1D RO uOhm */
     int32_t  resIm;       /* 0x21 RO uOhm */
+    uint16_t railIMax;    /* 0x25 RW mA */
 } RegisterMap_t;
 
 #define REG_MAP_SIZE      ((uint8_t)sizeof(RegisterMap_t))
 #define OFF(field)        ((uint8_t)offsetof(RegisterMap_t, field))
 #define BIT(off)          (1ul << (off))
 
-/* writable registers: CONTROL, CONNECT_Z, EIS_CHIP..MEAS_TIME, RES_INDEX.
- * All writable offsets are < 32, so a 32-bit mask is enough. */
+/* writable registers: CONTROL, CONNECT_Z, EIS_CHIP..MEAS_TIME, RES_INDEX (offsets
+ * < 32: WRITABLE_MASK) and RAIL_I_MAX (offsets 32..63: WRITABLE_MASK_HI, bit = offset - 32).
+ * Two 32-bit masks instead of one 64-bit mask: no 64-bit shifts on the Cortex-M0+. */
 #define WRITABLE_MASK     (BIT(OFF(control))  | BIT(OFF(connectZ)) | BIT(OFF(eisChip)) | \
                            BIT(OFF(fStart))   | BIT(OFF(fStop))    | BIT(OFF(amplitude)) | \
                            BIT(OFF(waveform)) | BIT(OFF(averages)) | BIT(OFF(measTime)) | \
                            BIT(OFF(resIndex)))
 #define MASK_BITS         32u
+#define BIT_HI(off)       BIT((off) - MASK_BITS)
+#define WRITABLE_MASK_HI  (BIT_HI(OFF(railIMax)) | BIT_HI(OFF(railIMax) + 1u))
 
 #define LAYOUT_CHECK(name, cond)  typedef char layout_check_##name[(cond) ? 1 : -1]
-LAYOUT_CHECK(map_size_is_37_bytes, sizeof(RegisterMap_t)             == 0x25u);
+LAYOUT_CHECK(map_size_is_39_bytes, sizeof(RegisterMap_t)             == 0x27u);
+LAYOUT_CHECK(rail_i_max_at_0x25,   offsetof(RegisterMap_t, railIMax) == 0x25u);
+LAYOUT_CHECK(map_below_64,         sizeof(RegisterMap_t)             <= 2u * MASK_BITS);
 LAYOUT_CHECK(meas_time_at_0x0A,    offsetof(RegisterMap_t, measTime) == 0x0Au);
 LAYOUT_CHECK(u_cell_at_0x0D,       offsetof(RegisterMap_t, uCell)    == 0x0Du);
 LAYOUT_CHECK(res_index_at_0x17,    offsetof(RegisterMap_t, resIndex) == 0x17u);
@@ -91,10 +97,18 @@ static RegisterMap_t regs;
 /* ISR-side transaction state */
 static uint8_t  regPointer, rxCount, wrPointer, txIndex;
 static uint8_t  wrData[REG_MAP_SIZE];
-static uint32_t wrMask;
+static uint32_t wrMask, wrMaskHi;
 static uint8_t  txSnapshot[REG_MAP_SIZE];
 
-static volatile uint8_t pendingControlWrite, pendingConnectZWrite;
+static volatile uint8_t pendingControlWrite, pendingConnectZWrite, pendingRailIMaxWrite;
+
+/* 1 if the master may write register byte off */
+static uint8_t IsWritable(uint8_t off)
+{
+    if (off < MASK_BITS)
+        return (WRITABLE_MASK & BIT(off)) ? 1u : 0u;
+    return (off < REG_MAP_SIZE && (WRITABLE_MASK_HI & BIT_HI(off))) ? 1u : 0u;
+}
 
 static int16_t ToInt16(float v)
 {
@@ -120,23 +134,26 @@ static void FillResult(void)
 
 static void FinishWriteTransaction(void)
 {
-    const uint32_t mask = wrMask;
+    const uint32_t mask = wrMask, maskHi = wrMaskHi;
     uint8_t off;
 
-    if (mask != 0u)
+    if (mask != 0u || maskHi != 0u)
     {
         uint8_t *dst = (uint8_t *)&regs;
-        for (off = 0u; off < MASK_BITS && off < REG_MAP_SIZE; off++)
+        for (off = 0u; off < REG_MAP_SIZE; off++)
         {
-            if (mask & BIT(off))
+            if ((off < MASK_BITS) ? (mask & BIT(off)) : (maskHi & BIT_HI(off)))
                 dst[off] = wrData[off];
         }
         if (mask & BIT(OFF(control)))
             pendingControlWrite = 1u;
         if (mask & BIT(OFF(connectZ)))
             pendingConnectZWrite = 1u;
+        if (maskHi & (BIT_HI(OFF(railIMax)) | BIT_HI(OFF(railIMax) + 1u)))
+            pendingRailIMaxWrite = 1u;
     }
     wrMask = 0u;
+    wrMaskHi = 0u;
     rxCount = 0u;
 }
 
@@ -155,6 +172,7 @@ void I2cComm_Init(void)
     regs.averages  = EIS_AVERAGES_MIN;
     regs.measTime  = EIS_MEAS_TIME_DEFAULT;
     regs.progress  = EIS_PROGRESS_IDLE;
+    regs.railIMax  = App_GetRailCurrentLimit();
 
     I2cComm_SetAddress(BmConfig_Get()->i2cAddr);
     I2C1->ICR = I2C_ICR_ADDRCF | I2C_ICR_NACKCF | I2C_ICR_STOPCF | I2C_ICR_BERRCF | I2C_ICR_ARLOCF | I2C_ICR_OVRCF;
@@ -166,7 +184,7 @@ void I2cComm_Init(void)
 void I2cComm_Update(void)
 {
     RegisterMap_t snap;
-    uint8_t doControl, doConnectZ;
+    uint8_t doControl, doConnectZ, doRailIMax;
 
     /* telemetry, built outside the critical section */
     const uint8_t  status    = App_GetStatus();
@@ -180,6 +198,7 @@ void I2cComm_Update(void)
     const int16_t  tTab      = ToInt16(TempSensor_GetTemperature() * T_CENTI_PER_DEGC);
     const uint16_t calLow    = TempSensor_GetCalCountsLow();
     const uint16_t calHigh   = TempSensor_GetCalCountsHigh();
+    const uint16_t railIMax  = App_GetRailCurrentLimit();
 
     __disable_irq();
     regs.status    = status;
@@ -194,14 +213,27 @@ void I2cComm_Update(void)
     FillResult();
     doControl  = pendingControlWrite;
     doConnectZ = pendingConnectZWrite;
+    doRailIMax = pendingRailIMaxWrite;
     pendingControlWrite  = 0u;
     pendingConnectZWrite = 0u;
+    pendingRailIMaxWrite = 0u;
     snap = regs;
     if (doControl)
         regs.control = 0u;
     if (!doConnectZ)
         regs.connectZ = connectZ;          /* mirror the state in effect (also changes via the console) */
+    if (!doRailIMax)
+        regs.railIMax = railIMax;          /* mirror the limit in effect (also changes via the console) */
     __enable_irq();
+
+    /* rail current limit: invalid values are ignored, the register shows the limit in effect */
+    if (doRailIMax && !App_SetRailCurrentLimit((int32_t)snap.railIMax))
+    {
+        __disable_irq();
+        if (regs.railIMax == snap.railIMax)
+            regs.railIMax = App_GetRailCurrentLimit();
+        __enable_irq();
+    }
 
     /* CONNECT_Z first, then commands (a write of both in one transaction
      * starts the sweep with the new state). The EIS parameters 0x04..0x0A are
@@ -250,12 +282,15 @@ static void RxByte(uint8_t b)
         wrPointer  = b;                                   /* first byte = register pointer */
         regPointer = (b < REG_MAP_SIZE) ? b : 0u;
     }
-    else if (wrPointer < MASK_BITS)
+    else if (wrPointer < REG_MAP_SIZE)
     {
-        if (WRITABLE_MASK & BIT(wrPointer))
+        if (IsWritable(wrPointer))
         {
             wrData[wrPointer] = b;
-            wrMask |= BIT(wrPointer);
+            if (wrPointer < MASK_BITS)
+                wrMask |= BIT(wrPointer);
+            else
+                wrMaskHi |= BIT_HI(wrPointer);
         }
         wrPointer++;
     }
@@ -273,6 +308,7 @@ void I2C1_IRQHandler(void)
     {
         I2C1->ICR = I2C_ICR_BERRCF | I2C_ICR_ARLOCF | I2C_ICR_OVRCF;
         wrMask  = 0u;                                     /* bus error: drop the partial write */
+        wrMaskHi = 0u;
         rxCount = 0u;
     }
 
